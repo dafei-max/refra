@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aeye KV Studio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="neo-app">
+      <header class="neo-brand" aria-label="Aeye design">
+        <img src="/ui-assets/neo-brand.png" alt="灵眸 Aeye design" />
+      </header>
+
+      <nav class="side-rail" aria-label="主导航">
+        <button type="button" class="rail-item active" data-view-target="generate" id="generateButton">
+          <span class="rail-icon">
+            <img class="icon-default" src="/ui-assets/icon/generate-default.png" alt="" />
+            <img class="icon-click" src="/ui-assets/icon/generate-click.png" alt="" />
+          </span>
+          <span>生成</span>
+        </button>
+        <button type="button" class="rail-item" data-view-target="assets" id="assetsButton">
+          <span class="rail-icon">
+            <img class="icon-default" src="/ui-assets/icon/assets-default.png" alt="" />
+            <img class="icon-click" src="/ui-assets/icon/assets-click.png" alt="" />
+          </span>
+          <span>资产</span>
+        </button>
+        <button type="button" class="rail-item" data-view-target="styles" id="styleButton">
+          <span class="rail-icon">
+            <img class="icon-default" src="/ui-assets/icon/style-default.png" alt="" />
+            <img class="icon-click" src="/ui-assets/icon/style-click.png" alt="" />
+          </span>
+          <span>风格</span>
+        </button>
+        <button type="button" class="rail-item" data-view-target="materials" id="libraryButton">
+          <span class="rail-icon">
+            <img class="icon-default" src="/ui-assets/icon/material-default.png" alt="" />
+            <img class="icon-click" src="/ui-assets/icon/material-click.png" alt="" />
+          </span>
+          <span>素材</span>
+        </button>
+      </nav>
+
+      <main class="neo-main">
+        <section id="generatePage" class="neo-page generate-page active">
+          <div id="errorBox" class="toast hidden"></div>
+
+          <section id="generationStory" class="generation-story hidden">
+            <h1 id="storyTitle"></h1>
+            <div id="storyReferences" class="story-references"></div>
+            <p id="storyDescription" class="story-description"></p>
+            <div id="stageAccordions" class="stage-accordions"></div>
+            <div id="resultView" class="generated-result empty-state">等待生成结果</div>
+          </section>
+
+          <div class="prompt-stack">
+            <div class="brief-top-row">
+              <input
+                id="campaignNameInput"
+                class="title-input"
+                form="briefForm"
+                name="campaign_name"
+                placeholder="活动名称（选填）"
+                autocomplete="off"
+              />
+              <input
+                id="campaignSubtitleInput"
+                class="subtitle-input"
+                form="briefForm"
+                name="campaign_subtitle"
+                placeholder="副标题"
+                autocomplete="off"
+              />
+              <input
+                id="campaignTimeInput"
+                class="time-input"
+                form="briefForm"
+                name="campaign_time"
+                placeholder="活动时间"
+                autocomplete="off"
+              />
+            </div>
+
+            <form id="briefForm" class="prompt-dock" enctype="multipart/form-data">
+              <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
+              <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
+              <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
+              <input name="generate_image" type="checkbox" checked hidden />
+              <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
+
+              <div id="stylePresetSection" class="floating-picker style-picker hidden"></div>
+              <div id="sizePopover" class="floating-picker size-picker hidden"></div>
+
+              <div id="referenceStrip" class="reference-strip hidden"></div>
+
+              <div class="text-wrap">
+                <textarea
+                  id="visualDescriptionInput"
+                  name="visual_description"
+                  placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。"
+                  required
+                ></textarea>
+                <div id="mentionMenu" class="mention-menu hidden"></div>
+              </div>
+
+              <div class="dock-actions">
+                <div class="dock-tools">
+                  <button type="button" class="tool-button square" id="uploadTrigger" title="上传图片">
+                    <img src="/ui-assets/jia.png" alt="" />
+                  </button>
+                  <button type="button" class="tool-button" id="stylePickerButton">
+                    <img id="stylePickerIcon" class="tool-icon-img" src="/ui-assets/fengge.png" alt="" />
+                    <span id="stylePickerLabel">风格预设</span>
+                  </button>
+                  <button type="button" class="tool-button" id="sizePickerButton">
+                    <span id="sizeIcon" class="size-icon ratio-34"></span>
+                    <span id="sizeText">3:4</span>
+                  </button>
+                  <button type="button" class="tool-button" id="expandDescriptionButton">
+                    <img class="tool-icon-img" src="/ui-assets/size.png" alt="" />
+                    <span>扩写</span>
+                  </button>
+                  <button type="button" class="tool-button doudou-toggle" id="doudouIpButton" aria-pressed="false">
+                    <img class="tool-icon-img doudou-icon" src="/doudou/6视图/22-1.png" alt="" />
+                    <span>兜兜IP</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="tool-button overlay-toggle"
+                    id="includeLogoButton"
+                    aria-pressed="false"
+                    title="在成图左上角叠加抖音商城 Logo"
+                  >
+                    <span>左上角 Logo</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="tool-button overlay-toggle"
+                    id="includeSearchOverlayButton"
+                    aria-pressed="false"
+                    title="在成图右下角叠加活动搜索框"
+                  >
+                    <span>右下角搜索框</span>
+                  </button>
+                </div>
+                <button type="submit" id="runButton" class="send-button" title="运行链路">
+                  <img src="/ui-assets/runButton.png" alt="" />
+                </button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="assetsPage" class="neo-page assets-page">
+          <div class="page-content narrow">
+            <h1>资产</h1>
+            <div id="assetsList" class="asset-timeline empty-state">正在读取资产...</div>
+          </div>
+        </section>
+
+        <section id="stylesPage" class="neo-page styles-page">
+          <div class="page-content">
+            <h1>风格预设管理</h1>
+            <div id="styleMessage" class="inline-message"></div>
+            <div id="styleList" class="style-card-grid empty-state">正在读取风格...</div>
+            <input id="styleFolderInput" type="file" webkitdirectory directory multiple hidden />
+            <form id="styleForm" class="hidden"></form>
+          </div>
+        </section>
+
+        <section id="materialsPage" class="neo-page materials-page">
+          <div class="page-content">
+            <h1>素材库管理</h1>
+            <div class="tabs" id="libraryTabs">
+              <div class="material-tab-list" role="tablist" aria-label="按参考用途筛选">
+                <button type="button" class="tab-button active" data-material-tab="全部">全部</button>
+                <button type="button" class="tab-button" data-material-tab="完整案例">完整案例</button>
+                <button type="button" class="tab-button" data-material-tab="字体标题">字体标题</button>
+                <button type="button" class="tab-button" data-material-tab="构图版式">构图版式</button>
+                <button type="button" class="tab-button" data-material-tab="风格质感">风格质感</button>
+                <button type="button" class="tab-button" data-material-tab="元素主体">元素主体</button>
+                <button type="button" class="tab-button" data-material-tab="色彩氛围">色彩氛围</button>
+                <button type="button" class="tab-button" data-material-tab="场景空间">场景空间</button>
+              </div>
+              <form id="inspirationSearchForm" class="inspiration-search" role="search">
+                <label class="visually-hidden" for="inspirationSearchInput">搜索 Pinterest 与 Behance 设计灵感</label>
+                <input id="inspirationSearchInput" type="search" maxlength="80" autocomplete="off" placeholder="搜索设计灵感，如：美妆、宠物、夏日" />
+                <button id="inspirationSearchButton" type="submit">搜索</button>
+              </form>
+            </div>
+            <div id="materialFilters" class="material-filter-bar">
+              <label>
+                <span>设计类型</span>
+                <select id="materialDesignTypeFilter"><option value="全部">全部</option></select>
+              </label>
+              <label>
+                <span>来源</span>
+                <select id="materialSourceFilter">
+                  <option value="全部">全部</option>
+                  <option value="pinterest">Pinterest</option>
+                  <option value="behance">Behance</option>
+                  <option value="preset-library">风格预设</option>
+                  <option value="local">本地素材</option>
+                  <option value="upload">手动上传</option>
+                </select>
+              </label>
+              <label>
+                <span>画幅</span>
+                <select id="materialOrientationFilter">
+                  <option value="全部">全部</option>
+                  <option value="竖版">竖版</option>
+                  <option value="横版">横版</option>
+                  <option value="方形">方形</option>
+                </select>
+              </label>
+              <button id="materialFilterReset" type="button" class="material-filter-reset">重置筛选</button>
+            </div>
+            <div id="libraryMessage" class="inline-message"></div>
+            <section id="inspirationSection" class="inspiration-section hidden" aria-live="polite">
+              <div class="inspiration-head">
+                <div>
+                  <h2 id="inspirationTitle">设计灵感</h2>
+                  <p id="inspirationSummary"></p>
+                </div>
+                <button id="inspirationClearButton" type="button" class="inspiration-clear">返回素材库</button>
+              </div>
+              <div id="inspirationStatus" class="inspiration-status"></div>
+              <div id="inspirationList" class="inspiration-masonry"></div>
+            </section>
+            <div id="libraryList" class="material-masonry empty-state">正在读取素材库...</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="materialDetailModal" class="detail-modal hidden">
+      <button type="button" class="modal-scrim" data-close-material-detail aria-label="关闭"></button>
+      <section class="detail-card" role="dialog" aria-modal="true" aria-label="素材详情">
+        <div class="detail-media"><img id="materialDetailImage" alt="" /></div>
+        <div class="detail-info">
+          <div class="detail-head">
+            <strong id="materialDetailType">字体</strong>
+            <button type="button" class="close-round" data-close-material-detail>×</button>
+          </div>
+          <p id="materialDetailCategory"></p>
+          <p id="materialDetailDescription"></p>
+          <a id="materialDetailSource" class="material-source-link hidden" href="#" target="_blank" rel="noopener noreferrer">查看原来源</a>
+          <div class="material-detail-actions">
+            <button type="button" id="materialSameButton" class="material-action-button secondary">做同款</button>
+            <button type="button" id="materialUseReferenceButton" class="material-action-button primary">用作参考图</button>
+          </div>
+          <button type="button" id="materialDeleteButton" class="danger-pill material-delete-button">删除</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="inspirationPreviewModal" class="detail-modal hidden">
+      <button type="button" class="modal-scrim" data-close-inspiration-preview aria-label="关闭"></button>
+      <section class="detail-card inspiration-preview-card" role="dialog" aria-modal="true" aria-label="设计灵感详情">
+        <div class="detail-media inspiration-preview-media">
+          <img id="inspirationPreviewImage" alt="" />
+          <div id="inspirationPreviewFallback" class="inspiration-image-fallback hidden">图片暂时无法加载</div>
+        </div>
+        <div class="detail-info inspiration-preview-info">
+          <div class="detail-head">
+            <strong id="inspirationPreviewType">视觉设计</strong>
+            <button type="button" class="close-round" data-close-inspiration-preview>×</button>
+          </div>
+          <h2 id="inspirationPreviewTitle"></h2>
+          <p id="inspirationPreviewDescription"></p>
+          <dl class="inspiration-meta-list">
+            <div><dt>来源</dt><dd id="inspirationPreviewSource">Pinterest</dd></div>
+            <div id="inspirationPreviewAuthorRow" class="hidden"><dt>作者</dt><dd id="inspirationPreviewAuthor"></dd></div>
+            <div><dt>匹配查询</dt><dd id="inspirationPreviewQuery"></dd></div>
+            <div><dt>图片尺寸</dt><dd id="inspirationPreviewDimensions"></dd></div>
+          </dl>
+          <fieldset class="reference-role-picker">
+            <legend>保存为参考素材</legend>
+            <p>一张图可以承担多个参考用途</p>
+            <div class="reference-role-options">
+              <label><input type="checkbox" value="完整案例" checked /><span>完整案例</span></label>
+              <label><input type="checkbox" value="字体标题" /><span>字体标题</span></label>
+              <label><input type="checkbox" value="构图版式" /><span>构图版式</span></label>
+              <label><input type="checkbox" value="风格质感" /><span>风格质感</span></label>
+              <label><input type="checkbox" value="元素主体" /><span>元素主体</span></label>
+              <label><input type="checkbox" value="色彩氛围" /><span>色彩氛围</span></label>
+              <label><input type="checkbox" value="场景空间" /><span>场景空间</span></label>
+            </div>
+          </fieldset>
+          <label class="inspiration-tag-field" for="inspirationSaveTags">
+            <span>主题标签</span>
+            <input id="inspirationSaveTags" type="text" maxlength="160" placeholder="用逗号分隔，如：宠物、活动KV" />
+          </label>
+          <p id="inspirationSaveMessage" class="inspiration-save-message"></p>
+          <div class="inspiration-preview-actions">
+            <a id="inspirationPreviewLink" class="material-action-button secondary inspiration-original-link" href="#" target="_blank" rel="noopener noreferrer">查看原项目</a>
+            <button id="inspirationSaveButton" type="button" class="material-action-button primary">保存到素材库</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <form id="materialForm" class="hidden"></form>
+    <form id="xlsxForm" class="hidden"></form>
+    <script src="/app.js"></script>
+  </body>
+</html>

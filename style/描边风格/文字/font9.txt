@@ -1,0 +1,4 @@
+Main prompt:
+2D flat heavy hand-drawn headline font, text content: 热点趋势，extra thick rounded block handwriting strokes, subtle hand-drawn uneven edges, solid white font on pure black background, red date label accent, dotted line doodle decoration, chalk sketch flat texture
+
+Negative prompt: d3D relief, shadow shading, gradient color, distorted letter shapes, overlapping messy elements, blurry text

@@ -1,0 +1,4 @@
+Main prompt:
+2D flat hand-drawn cartoon promotional font, text content: 双 11 小红书买买节，thick rounded handwritten strokes, natural uneven handwriting wobble, solid bright blue main font, small red jagged star decorations, light gray plain background, yellow date label accent, chalk hand-drawn texture, flat no shadow gradient
+
+Negative prompt: deformed letters, overlapping strokes, 3D effect, shading, complex scenery, noisy texture, broken characters

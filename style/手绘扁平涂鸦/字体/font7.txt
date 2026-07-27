@@ -1,0 +1,4 @@
+Main prompt:
+Soft cute rounded bubble handwritten title font, text content: 遛遛生活3.0, low saturation light blue thick rounded font, fully rounded soft plump strokes, slight natural uneven handwriting distortion, off-white minimalist background, horizontal staggered text layout, zero extra decorations, minimalist clean daily vlog cover font, 2D flat solid color filling, no outline and shadow, soft healing doodle handwritten style, smooth lovely font strokes
+
+Negative prompt: distorted text, blurry font, overlapping strokes, garbled characters, 3D emboss, gradient color, shadow, lighting, perspective, real people, scenery, debris, borders, heavy noise, outline stroke, watermark, complex background, broken strokes, incomplete text

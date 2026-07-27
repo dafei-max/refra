@@ -1,0 +1,1 @@
+Horizontal layout template, a centered red dashed frame main title area is placed at the top of the layout, followed by a full-width purple dashed frame subtext time module directly underneath. The centered main image area occupies the lower half of the layout, no bottom decorative English blocks.

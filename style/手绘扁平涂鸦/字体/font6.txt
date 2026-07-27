@@ -1,0 +1,4 @@
+Main prompt:
+Thick square naive hand-drawn title font, text content: 夏遇黄山，有仙也有烟, heavy solid white bold Chinese characters, bright yellow small text mark "(time)7.18-8.20" at top right corner, square rounded strokes with thick grain texture, pure black minimalist background, staggered stacked text layout, Huangshan cultural travel short video cover, 2D flat design without gradient and shadow, Chinese style healing hand-drawn font, high contrast eye-catching color scheme
+
+Negative prompt: distorted text, blurry font, overlapping strokes, garbled characters, 3D emboss, gradient color, shadow, lighting, perspective, real people, scenery, debris, borders, heavy noise, outline stroke, watermark, complex background, broken strokes, incomplete text

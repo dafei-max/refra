@@ -1,0 +1,4 @@
+Main prompt:
+3D rounded bubble hand-drawn cartoon title font, text: 小红书兴趣街区 2025, thick rounded naive handwritten strokes, fully rounded stroke corners, uniform stroke thickness, slight natural handwriting jitter, cute social media cover text, solid white & solid bright yellow font, pure dark gray minimalist background, staggered centered text layout, hand account chalk doodle texture, soft inflated clay balloon texture, no gradient, no shadow, clean short video title, complete undistorted font, high-saturation solid color, minimalist clutter-free composition
+
+Negative prompt: distorted text, blurry font, overlapping strokes, garbled characters, flat 2D, outline stroke, gradient color, shadow, lighting, perspective, real people, scenery, debris, borders, heavy noise, watermark, complex background, broken strokes, incomplete text

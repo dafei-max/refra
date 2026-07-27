@@ -1,0 +1,11 @@
+{
+  "name": "kv-reference-prompt-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export:materials": "python3 tools/export_materials.py",
+    "sync:preset-materials": "node tools/sync_preset_materials.mjs",
+    "start": "node server.mjs"
+  }
+}

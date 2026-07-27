@@ -1,0 +1,4 @@
+Main prompt:
+2D flat hand-drawn block cartoon title font, text: 万物皆可审美积累，thick square rounded handwritten strokes, all rounded corners, consistent stroke width, subtle natural hand-drawn uneven jitter, clean aesthetic poster text, solid off-white halftone dot texture font, pure saturated blue flat background, centered two-line text layout, hand stamp chalk doodle texture, zero gradient, zero shadow, minimalist neat composition, full intact font, solid matte color
+
+Negative prompt: text deformation, fuzzy lettering, overlapping lines, messy garbled words, 3D emboss, gradient, shadow, light perspective, human figures, landscape, extra debris, frame borders, grain noise, outer outline, watermark, busy background, fractured strokes, cut-off text

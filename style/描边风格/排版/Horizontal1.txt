@@ -1,0 +1,1 @@
+Horizontal layout template, the layout is split into left and right sections. The left side features a red dashed frame main title area on top and a purple dashed frame subtext time module below it. The centered main image area is placed independently on the right side, no bottom decorative English blocks.

@@ -1,0 +1,5 @@
+Main prompt:
+2D flat hand-drawn cartoon title font, text content: 不完美手工事务所，thick rounded naive handwritten Chinese characters, uniform rounded stroke corners, slight natural handwriting jitter, solid dark brown kraft paper color, pale cream minimalist background, centered text layout, hand account doodle chalk texture, no gradient shadow, clean minimalist composition
+Negative: distorted text, blurry font, 3D emboss, shadow, perspective, messy clutter, broken strokes
+
+Negative prompt: distorted text, blurry font, 3D emboss, shadow, perspective, messy clutter, broken strokes

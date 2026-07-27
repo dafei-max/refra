@@ -1,0 +1,1 @@
+Vertical layout template, the upper half of the layout is fully occupied by the centered main image area. A full-width red dashed frame for the main title sits at the bottom of the layout, with a purple dashed frame subtext time module nested under the title block, no extra decorative English blocks.

@@ -1,0 +1,4 @@
+Main prompt:
+2D fluffy clay hand-drawn cartoon font, text content: 噗通艺术节，rounded thick handwritten characters, soft uneven clay handwriting wobble, solid milky white font, clean sky-blue flat background, double-line centered text layout, matte chalk handcraft texture, no shadow gradient
+
+Negative prompt: blurry text, outline border, 3D relief, lighting perspective, debris clutter, incomplete strokes

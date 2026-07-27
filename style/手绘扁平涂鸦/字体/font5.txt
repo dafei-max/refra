@@ -1,0 +1,4 @@
+Main prompt:
+Vintage rubber stamp rough grain thick handwritten font, text content: 到户外过两天再说, small auxiliary text "48h" and speech bubble dialog decoration, vintage off-white worn textured font, strokes with mottled particle texture, solid pure black background, three-layer staggered stacked text layout, thick naive rounded hand-drawn font, outdoor camping short video cover title, 2D flat design without shadow, retro handmade doodle texture, complete clear undistorted text
+
+Negative prompt: distorted text, blurry font, overlapping strokes, garbled characters, 3D emboss, gradient color, shadow, lighting, perspective, real people, scenery, debris, borders, heavy noise, outline stroke, watermark, complex background, broken strokes, incomplete text

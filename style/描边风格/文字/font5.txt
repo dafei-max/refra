@@ -1,0 +1,4 @@
+Main prompt:
+2D fluffy clay hand-drawn cartoon font, text content: 小红书手工友好季，rounded thick handwritten characters, soft uneven clay handwriting wobble, solid milky white font, clean sky-blue flat background, double-line centered text layout, matte chalk handcraft texture, no shadow gradient
+
+Negative prompt: text distortion, overlapping strokes, strong shadow, 3D depth, messy decorations, broken font edges

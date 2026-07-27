@@ -1,0 +1,4 @@
+Main prompt:
+2D flat loose hand-drawn cartoon title font, text: 肆意咖啡节 relax, thick soft rounded naive handwriting, full rounded stroke terminals, equal stroke thickness, gentle natural handwritten wobble, warm healing coffee shop cover font, solid dark coffee brown font, pale beige solid background, slanted free centered layout, tiny hand-drawn doodle suffix, eraser chalk hand account texture, flat design without shadow/gradient, simple clean event title, complete undamaged font, low-saturation solid tone, blank clutterless background
+
+Negative prompt: twisted text, blurry typeface, crossed overlapping strokes, scrambled characters, 3D relief, color gradient, drop shadow, depth perspective, real scenes, decorative debris, thick borders, heavy grain noise, outer outline stroke, watermark, intricate background, cracked strokes, incomplete words

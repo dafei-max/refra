@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+
+# Runtime-generated files are preserved in the tagged snapshot bundle, not in Git.
+outputs/*
+!outputs/.gitkeep
+uploads/references/*
+!uploads/references/.gitkeep
+archives/
+release-bundles/
+
