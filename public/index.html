@@ -85,12 +85,12 @@
 
             <form id="briefForm" class="prompt-dock" enctype="multipart/form-data">
               <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
+              <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
               <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
               <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
               <input name="generate_image" type="checkbox" checked hidden />
               <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
 
-              <div id="stylePresetSection" class="floating-picker style-picker hidden"></div>
               <div id="sizePopover" class="floating-picker size-picker hidden"></div>
 
               <div id="referenceStrip" class="reference-strip hidden"></div>
@@ -304,6 +304,7 @@
 
     <form id="materialForm" class="hidden"></form>
     <form id="xlsxForm" class="hidden"></form>
+    <div id="stylePresetSection" class="style-picker hidden"></div>
     <script src="/app.js"></script>
   </body>
 </html>

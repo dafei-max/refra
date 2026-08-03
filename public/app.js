@@ -36,6 +36,7 @@ const includeLogoButton = document.querySelector("#includeLogoButton");
 const includeSearchOverlayButton = document.querySelector("#includeSearchOverlayButton");
 const stylePresetSection = document.querySelector("#stylePresetSection");
 const stylePresetInput = document.querySelector("#stylePresetInput");
+const integratedLayoutInput = document.querySelector("#integratedLayoutInput");
 const stylePickerButton = document.querySelector("#stylePickerButton");
 const stylePickerIcon = document.querySelector("#stylePickerIcon");
 const stylePickerLabel = document.querySelector("#stylePickerLabel");
@@ -105,6 +106,7 @@ const LEGACY_MATERIAL_ROLES = {
 
 let allMaterials = [];
 let allStylePresets = [];
+let activeIntegratedLayoutTab = "vertical";
 let activeMaterialTab = "全部";
 let referenceFiles = [];
 let isExpandingDescription = false;
@@ -244,6 +246,30 @@ function styleNameShort(name) {
   return String(name || "").replace("手绘", "").replace("风格", "").replace("预设", "").trim();
 }
 
+function normalizedLayoutOrientation(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["horizontal", "landscape", "横版"].includes(normalized)) return "horizontal";
+  if (["vertical", "portrait", "竖版"].includes(normalized)) return "vertical";
+  return "";
+}
+
+function preferredLayoutTabForSize(value = imageSizeInput.value) {
+  return ["16:9", "4:3"].includes(value) ? "horizontal" : "vertical";
+}
+
+function selectedStylePreset() {
+  return allStylePresets.find((item) => item.id === (stylePresetInput.value || "none")) || null;
+}
+
+function integratedLayoutsForPreset(preset = selectedStylePreset()) {
+  return Array.isArray(preset?.integrated_layouts) ? preset.integrated_layouts : [];
+}
+
+function selectedIntegratedLayout(preset = selectedStylePreset()) {
+  const selectedId = integratedLayoutInput.value.trim();
+  return integratedLayoutsForPreset(preset).find((item) => item.variant_id === selectedId) || null;
+}
+
 function syncStylePickerButton() {
   const current = stylePresetInput.value || "none";
   const preset = allStylePresets.find((item) => item.id === current);
@@ -255,36 +281,113 @@ function syncStylePickerButton() {
 }
 
 function setSelectedStyle(id) {
-  stylePresetInput.value = id || "none";
+  const nextId = id || "none";
+  if (stylePresetInput.value !== nextId) integratedLayoutInput.value = "";
+  stylePresetInput.value = nextId;
+  activeIntegratedLayoutTab = preferredLayoutTabForSize();
+  const availableOrientations = new Set(
+    integratedLayoutsForPreset().map((item) => normalizedLayoutOrientation(item.orientation)).filter(Boolean),
+  );
+  if (availableOrientations.size && !availableOrientations.has(activeIntegratedLayoutTab)) {
+    activeIntegratedLayoutTab = availableOrientations.has("vertical") ? "vertical" : "horizontal";
+  }
   renderStylePresetCards();
   syncStylePickerButton();
 }
 
+function closeStylePresetModal() {
+  stylePresetSection.classList.add("hidden");
+}
+
+function openStylePresetModal() {
+  const selectedLayout = selectedIntegratedLayout();
+  activeIntegratedLayoutTab = normalizedLayoutOrientation(selectedLayout?.orientation)
+    || preferredLayoutTabForSize();
+  renderStylePresetCards();
+  stylePresetSection.classList.remove("hidden");
+}
+
 function renderStylePresetCards() {
   const current = stylePresetInput.value || "none";
+  const preset = selectedStylePreset();
+  const layouts = integratedLayoutsForPreset(preset);
+  const selectedLayoutId = integratedLayoutInput.value.trim();
+  const tabLayouts = layouts.filter((item) => normalizedLayoutOrientation(item.orientation) === activeIntegratedLayoutTab);
+  const hasHorizontal = layouts.some((item) => normalizedLayoutOrientation(item.orientation) === "horizontal");
+  const hasVertical = layouts.some((item) => normalizedLayoutOrientation(item.orientation) === "vertical");
   stylePresetSection.innerHTML = `
-    <div class="picker-title">选择风格</div>
-    <div class="style-picker-row">
-      ${allStylePresets
-        .map((item) => {
-          const selected = item.id === current;
-          const media = item.thumbnail
-            ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" />`
-            : `<span class="empty-preset">无预设</span>`;
-          return `
-            <button type="button" class="mini-style-card${selected ? " selected" : ""}" data-style-preset="${escapeHtml(item.id)}">
-              ${media}
-              <strong>${escapeHtml(styleNameShort(item.name))}</strong>
-            </button>
-          `;
-        })
-        .join("")}
+    <div class="style-modal-panel" role="dialog" aria-modal="true" aria-label="选择风格与整合版式">
+      <header class="style-modal-header">
+        <h2>风格</h2>
+        <button type="button" class="style-modal-close" data-close-style-modal aria-label="关闭">
+          <img src="/ui-assets/style-modal-close.png" alt="" aria-hidden="true" />
+        </button>
+      </header>
+      <div class="style-modal-scroll">
+        <div class="style-modal-grid">
+          ${allStylePresets
+            .map((item) => {
+              const selected = item.id === current;
+              const media = item.thumbnail
+                ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" />`
+                : `<span class="empty-preset">无预设</span>`;
+              return `
+                <article class="style-modal-card${selected ? " selected" : ""}">
+                  <div class="style-modal-media">
+                    ${media}
+                    <button type="button" class="style-apply-button" data-style-preset="${escapeHtml(item.id)}">应用</button>
+                  </div>
+                  <strong>${escapeHtml(styleNameShort(item.name))}</strong>
+                  <p>${escapeHtml(item.subtitle || "")}</p>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+        ${preset && preset.id !== "none" && layouts.length
+          ? `
+            <section class="integrated-layout-section">
+              <h3>整合版式</h3>
+              <div class="integrated-layout-tabs" role="tablist" aria-label="版式方向">
+                <button type="button" class="${activeIntegratedLayoutTab === "horizontal" ? "active" : ""}" data-layout-tab="horizontal"${hasHorizontal ? "" : " disabled"}>横版</button>
+                <button type="button" class="${activeIntegratedLayoutTab === "vertical" ? "active" : ""}" data-layout-tab="vertical"${hasVertical ? "" : " disabled"}>竖版</button>
+              </div>
+              <div class="integrated-layout-grid ${activeIntegratedLayoutTab}">
+                ${tabLayouts.length
+                  ? tabLayouts.map((item) => `
+                      <article class="integrated-layout-card${item.variant_id === selectedLayoutId ? " selected" : ""}">
+                        <div class="integrated-layout-media">
+                          <img src="${item.image}" alt="${escapeHtml(item.style_name || "整合版式")}" />
+                          <button type="button" class="layout-apply-button" data-integrated-layout="${escapeHtml(item.variant_id)}">应用</button>
+                        </div>
+                      </article>
+                    `).join("")
+                  : `<p class="integrated-layout-empty">当前风格暂无${activeIntegratedLayoutTab === "horizontal" ? "横版" : "竖版"}参考图</p>`}
+              </div>
+            </section>
+          `
+          : ""}
+      </div>
     </div>
   `;
-  stylePresetSection.querySelectorAll("[data-style-preset]").forEach((card) => {
-    card.addEventListener("click", () => {
-      setSelectedStyle(card.dataset.stylePreset || "none");
-      stylePresetSection.classList.add("hidden");
+  stylePresetSection.querySelector("[data-close-style-modal]")?.addEventListener("click", closeStylePresetModal);
+  stylePresetSection.querySelector(".style-modal-panel")?.addEventListener("click", (event) => event.stopPropagation());
+  stylePresetSection.querySelectorAll("[data-style-preset]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setSelectedStyle(button.dataset.stylePreset || "none");
+    });
+  });
+  stylePresetSection.querySelectorAll("[data-layout-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeIntegratedLayoutTab = button.dataset.layoutTab || "vertical";
+      renderStylePresetCards();
+    });
+  });
+  stylePresetSection.querySelectorAll("[data-integrated-layout]").forEach((button) => {
+    button.addEventListener("click", () => {
+      integratedLayoutInput.value = button.dataset.integratedLayout || "";
+      renderStylePresetCards();
+      closeStylePresetModal();
     });
   });
 }
@@ -318,6 +421,8 @@ function setImageSize(value) {
   sizeText.textContent = value;
   sizeIcon.className = `size-icon ratio-${value.replace(":", "")}`;
   renderSizePicker();
+  if (!integratedLayoutInput.value) activeIntegratedLayoutTab = preferredLayoutTabForSize(value);
+  if (!stylePresetSection.classList.contains("hidden")) renderStylePresetCards();
 }
 
 function referenceLabel(index) {
@@ -478,6 +583,9 @@ function resetStages() {
     design: { label: "设计判断", status: "idle", content: "等待参考图选择..." },
     preflight: { label: "生成前评审", status: "idle", content: "等待设计大纲..." },
     prompt: { label: "最终生图prompt", status: "idle", content: "等待 Prompt 生成..." },
+    typography: { label: "第一步版式图", status: "idle", content: "等待 Prompt..." },
+    scene: { label: "第二步完整 KV", status: "idle", content: "等待第一步版式图..." },
+    compose: { label: "品牌固定图层", status: "idle", content: "等待最终 KV..." },
     quality: { label: "成图评审", status: "idle", content: "等待成图..." },
   };
   renderStageAccordions();
@@ -589,15 +697,60 @@ function applyStage(event, payload) {
   }
   if (event === "prompt") {
     stageState.prompt = { label: "最终生图prompt", status: "done", content: payload.final_prompt || "" };
+    stageState.typography = { label: "第一步版式图", status: "running", content: "正在生成固定文字版式图..." };
+    stageState.scene = { label: "第二步完整 KV", status: "idle", content: "等待第一步版式图..." };
+    stageState.compose = { label: "品牌固定图层", status: "idle", content: "等待最终 KV..." };
+    renderStageAccordions();
+    return;
+  }
+  if (event === "typography") {
+    stageState.typography = {
+      label: "第一步版式图",
+      status: "done",
+      content: pretty(payload.typography_layer),
+    };
+    stageState.scene = {
+      label: "第二步完整 KV",
+      status: "running",
+      content: "正在将第一步成图作为固定参考，只在空白区域生成主体与场景...",
+    };
+    renderStageAccordions();
+    return;
+  }
+  if (event === "scene") {
+    stageState.scene = {
+      label: "第二步完整 KV",
+      status: "done",
+      content: pretty(payload.scene_layer),
+    };
+    renderStageAccordions();
+    return;
+  }
+  if (event === "compose") {
+    stageState.compose = {
+      label: "品牌固定图层",
+      status: payload.status === "done" ? "done" : "running",
+      content: payload.status === "done"
+        ? "最终 KV 已完成，并已按勾选项处理品牌固定图层。"
+        : payload.message || "正在处理品牌固定图层...",
+    };
     renderStageAccordions();
     return;
   }
   if (event === "image") {
     renderResult(payload.image_result);
+    if (!["layered", "two-stage-reference"].includes(payload.image_result?.generation_mode)) {
+      const reason = payload.image_result?.skipped
+        ? payload.image_result.reason || "本次未生成图层。"
+        : "本次使用紧凑单步生成。";
+      stageState.typography = { label: "第一步版式图", status: "done", content: reason };
+      stageState.scene = { label: "第二步完整 KV", status: "done", content: reason };
+      stageState.compose = { label: "品牌固定图层", status: "done", content: reason };
+    }
     if (!payload.image_result?.skipped) {
       stageState.quality = { label: "成图评审", status: "running", content: "正在进行美术总监成图评审..." };
-      renderStageAccordions();
     }
+    renderStageAccordions();
     return;
   }
   if (event === "quality") {
@@ -727,6 +880,8 @@ function saveAssetRecord(result) {
     preflight_review: result.preflight_review || null,
     quality_review: result.quality_review || null,
     retrieval: result.retrieval || null,
+    generation_mode: image.generation_mode || "one-shot",
+    layers: image.layers || null,
     created_at: new Date().toISOString(),
   };
   const records = readAssetRecords().filter((item) => item.name !== name && item.url !== image.url);
@@ -820,6 +975,14 @@ function renderAssets(items) {
               ${(item.references || []).map((src) => `<img src="${src}" alt="上传图" />`).join("")}
             </div>
             <p>${escapeHtml(item.description || "未记录画面描述")}</p>
+            ${item.layers ? `
+              <div class="asset-split-links">
+                ${item.layers.typography?.transparent_url ? `<a class="asset-link-pill" href="${item.layers.typography.transparent_url}" target="_blank" rel="noreferrer">文字透明 PNG</a>` : ""}
+                ${item.layers.typography?.url ? `<a class="asset-link-pill" href="${item.layers.typography.url}" target="_blank" rel="noreferrer">第一步版式图</a>` : ""}
+                ${item.layers.scene?.url ? `<a class="asset-link-pill" href="${item.layers.scene.url}" target="_blank" rel="noreferrer">第二步完整 KV</a>` : ""}
+                ${item.layers.layout_guide?.url ? `<a class="asset-link-pill" href="${item.layers.layout_guide.url}" target="_blank" rel="noreferrer">空间约束图</a>` : ""}
+              </div>
+            ` : ""}
             ${item.split ? `
               <div class="asset-split-links">
                 ${item.split.title_layer?.transparent_url ? `<a class="asset-link-pill" href="${item.split.title_layer.transparent_url}" target="_blank" rel="noreferrer">标题透明 PNG</a>` : ""}
@@ -913,6 +1076,7 @@ async function loadStyles() {
   if (!response.ok) throw new Error(payload.error || "读取风格失败");
   allStylePresets = payload.presets || [];
   if (!allStylePresets.some((item) => item.id === stylePresetInput.value)) stylePresetInput.value = "none";
+  if (!selectedIntegratedLayout()) integratedLayoutInput.value = "";
   renderStylePresetCards();
   renderStyleList();
   syncStylePickerButton();
@@ -1409,7 +1573,8 @@ includeSearchOverlayButton.addEventListener("click", () => {
 
 stylePickerButton.addEventListener("click", (event) => {
   event.stopPropagation();
-  stylePresetSection.classList.toggle("hidden");
+  if (stylePresetSection.classList.contains("hidden")) openStylePresetModal();
+  else closeStylePresetModal();
   sizePopover.classList.add("hidden");
 });
 
@@ -1421,8 +1586,15 @@ sizePickerButton.addEventListener("click", (event) => {
 
 document.addEventListener("click", (event) => {
   if (!mentionMenu.contains(event.target) && event.target !== visualDescriptionInput) mentionMenu.classList.add("hidden");
-  if (!stylePresetSection.contains(event.target) && !stylePickerButton.contains(event.target)) stylePresetSection.classList.add("hidden");
   if (!sizePopover.contains(event.target) && !sizePickerButton.contains(event.target)) sizePopover.classList.add("hidden");
+});
+
+stylePresetSection.addEventListener("click", (event) => {
+  if (event.target === stylePresetSection) closeStylePresetModal();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !stylePresetSection.classList.contains("hidden")) closeStylePresetModal();
 });
 
 generateButton.addEventListener("click", () => showView("generate"));

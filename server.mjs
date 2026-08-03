@@ -31,7 +31,6 @@ const ENABLE_CREATIVE_LLM = process.env.ENABLE_CREATIVE_LLM !== "false";
 const ENABLE_REFERENCE_LLM_RERANK = modeFlag("ENABLE_REFERENCE_LLM_RERANK");
 const ENABLE_DESIGN_LLM = modeFlag("ENABLE_DESIGN_LLM");
 const ENABLE_PREFLIGHT_LLM = modeFlag("ENABLE_PREFLIGHT_LLM");
-const ENABLE_PROMPT_LLM = process.env.ENABLE_PROMPT_LLM !== "false";
 const ENABLE_POST_IMAGE_REVIEW = modeFlag("ENABLE_POST_IMAGE_REVIEW");
 const CREATIVE_EVIDENCE_IMAGE_LIMIT = Math.max(0, Number(process.env.CREATIVE_EVIDENCE_IMAGE_LIMIT || (FAST_PIPELINE ? 3 : 6)));
 const CREATIVE_EVIDENCE_IMAGE_DETAIL = process.env.CREATIVE_EVIDENCE_IMAGE_DETAIL || (FAST_PIPELINE ? "low" : "high");
@@ -62,7 +61,9 @@ const CUSTOM_STYLES_PATH = path.join(__dirname, "data", "style-presets.json");
 const PYTHON_BIN = process.env.PYTHON_BIN || "/Users/bytedance/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3";
 const AUTO_ART_DIRECTOR_RETRY = modeFlag("AUTO_ART_DIRECTOR_RETRY");
 const ART_DIRECTOR_RETRY_LIMIT = 1;
-const INTEGRATED_LAYOUT_DECORATION_RULE = "参考图中已有的引号、括号、下划线、框线、标签、角标、色块和装饰符号必须保留其数量、大小关系、相对位置和视觉样式；参考图已有的英文眉题或其他非业务装饰文字按原样保留，不翻译、不改写、不替换；参考图中没有的装饰文字、英文、标签、角标、框线或符号不得新增。参考图原主标题、副标题、日期、品牌、版权及其他业务信息不属于保留项，必须按用户输入替换或删除";
+const INTEGRATED_LAYOUT_DECORATION_STRUCTURE_RULE = "装饰结构采用闭集继承：先逐项观察参考图中真实存在的引号、括号、下划线、框线、标签底形、角标、色块、分隔线和装饰符号；只允许复现参考图实际存在的类型，并严格继承其数量、大小关系、相对位置和视觉样式。参考图中不存在的结构一律禁止新增，尤其不得为了强调文字自行添加下划线、引号、括号、边框、标签、角标、强调线或其他装饰笔画";
+const INTEGRATED_LAYOUT_DECORATIVE_COPY_RULE = "文字内容采用用户输入白名单：画面中只能出现用户明确填写的主标题、副标题和活动时间，且必须逐字准确。参考图中的英文眉题、栏目短语、主题翻译、口号、说明、地点、品牌、版权、年份、日期、辅助信息及其他可读文字，只要没有对应的用户输入字段，就必须删除；禁止保留、照抄、改写、联想、补全或用近义文案占位。可以按参考图保留真实存在的非文字装饰结构，但被删除文字所在位置必须恢复为干净留白，不能出现任何字母、数字、汉字或乱码";
+const INTEGRATED_LAYOUT_DECORATION_RULE = `${INTEGRATED_LAYOUT_DECORATION_STRUCTURE_RULE}；${INTEGRATED_LAYOUT_DECORATIVE_COPY_RULE}`;
 
 const SIZE_MAP = {
   "16:9": "1536x864",
@@ -104,6 +105,7 @@ const THREE_D_PRESET_ID = "three_d_style_v1";
 const OUTLINE_PRESET_ID = "outline_style_v1";
 const MINIMAL_FLAT_PRESET_ID = "minimal_flat_illustration_v1";
 const REAL_PRODUCT_PRESET_ID = "real_product_poster_v1";
+const REAL_PERSON_PRESET_ID = "real_person_poster_v1";
 const IMAGE_FILE_RE = /\.(png|jpe?g|webp)$/i;
 const DOUDOU_THUMB_URL = "/doudou/6视图/22-1.png";
 
@@ -379,13 +381,6 @@ const STYLE_PRESETS = [
     thumbnail: "",
   },
   {
-    id: HAND_DRAWN_PRESET_ID,
-    name: "手绘扁平涂鸦",
-    subtitle: "留白感手绘插画",
-    preset_id: HAND_DRAWN_PRESET_ID,
-    thumbnail: "/style/%E6%89%8B%E7%BB%98%E6%89%81%E5%B9%B3%E6%B6%82%E9%B8%A6/%E9%A3%8E%E6%A0%BC/style1.png",
-  },
-  {
     id: THREE_D_PRESET_ID,
     name: "3D风格",
     subtitle: "立体潮流质感",
@@ -405,6 +400,13 @@ const STYLE_PRESETS = [
     subtitle: "明快商品海报",
     preset_id: REAL_PRODUCT_PRESET_ID,
     thumbnail: "/style/%E5%AE%9E%E6%99%AF%E5%95%86%E5%93%81/%E9%A3%8E%E6%A0%BC/style1.png",
+  },
+  {
+    id: REAL_PERSON_PRESET_ID,
+    name: "真实人物",
+    subtitle: "潮流人物海报",
+    preset_id: REAL_PERSON_PRESET_ID,
+    thumbnail: "/style/%E7%9C%9F%E5%AE%9E%E4%BA%BA%E7%89%A9/%E9%A3%8E%E6%A0%BC/sytle1.jpg",
   },
 ];
 
@@ -506,6 +508,40 @@ const REAL_PRODUCT_PRESET = {
     "每张图只选择1-2种冲击手段，例如尺度反差、镜头透视、悬浮动势、材质反差或冷暖对撞",
     "严禁增加用户未提供的品牌、英文、价格、促销卖点、口号、日期或规则文字",
     "商品结构、比例、接口、屏幕、镜头、包装和核心功能部位必须可信且不被遮挡",
+  ],
+};
+
+const REAL_PERSON_PRESET = {
+  preset_id: REAL_PERSON_PRESET_ID,
+  preset_name: "真实人物预设",
+  style_group: "真实人物 / 商业人像摄影 / 潮流人物海报 / 生活方式营销KV",
+  aspect_ratio_recommend: ["3:4", "4:3", "16:9", "1:1", "9:16"],
+  output_type: "人物海报 / 营销KV / 潮流活动视觉 / 生活方式传播海报",
+  reference_base: "style",
+  reference_dir: "真实人物",
+  shared_style: {
+    visual_style: ["真实人物商业摄影", "潮流杂志视觉", "生活方式叙事", "人物营销海报", "社交传播感", "高完成度人像KV"],
+    composition_rules: ["人物是第一视觉中心", "人物面部、身体轮廓、服装层次和动作清晰可辨", "人物姿态、服装、道具与主题场景产生明确关联", "标题、人物与背景建立清晰层级", "标题不得遮挡人物面部和关键服装", "根据整合版式保留真实主视觉空白区域"],
+    color_rules: ["建立主色、辅助色和少量点缀色", "文字、服装、道具与场景色彩形成呼应", "人物服装复杂时简化背景与文字", "保持人物肤色自然、场景色温统一并确保人物与背景分离"],
+    texture_rules: ["保留真实摄影光影与服装材质", "避免过度磨皮、塑料皮肤和明显AI合成质感", "人物与背景光源、色温、阴影和景深统一", "允许真实摄影、写实CG或编辑式拼贴，但人物身份与五官结构必须稳定"],
+    mood: ["真实", "潮流", "有态度", "有场景叙事", "商业可用", "社交传播"],
+  },
+  title_style: {
+    style_name: "商业人物海报标题",
+    features: ["标题清晰可读", "严格继承整合版式参考的字形、比例、位置、对齐和层级", "标题与人物形成稳定视觉关系"],
+    avoid: ["不要遮挡人物面部或关键服装", "不要复制参考图原文字", "不要无依据新增英文、日期、价格、口号或品牌"],
+  },
+  reference_groups: [
+    { id: "integrated_layout", role: "整合版式", label: "整合版式参考", dir: "整合版式", count: 1 },
+    { id: "style", role: "风格", label: "风格参考", dir: "风格", count: 1 },
+  ],
+  scene_expansion_rules: [
+    "人物必须是画面第一视觉中心，面部、身体轮廓、服装和动作清晰可辨",
+    "优先使用自然且与主题存在叙事关系的动作，避免证件照式僵硬站姿",
+    "保留人物真实比例、完整肢体和稳定五官结构；避免手部畸形、肢体重复、五官错位、过度磨皮和塑料皮肤",
+    "如果用户上传人物主体图，必须以该图为身份与外观主参考，保留人物身份、脸部特征、发型和主要服装，不得替换成其他人物",
+    "场景只服务人物、主题和营销信息，辅助元素数量克制，不遮挡人物面部、手部或服装关键部位",
+    "只呈现用户明确提供的文字，不新增无来源品牌、英文、日期、价格、口号或说明文字",
   ],
 };
 
@@ -635,8 +671,8 @@ const MINIMAL_FLAT_PRESET = {
   },
   reference_groups: [
     { id: "integrated_layout", role: "整合版式", label: "整合版式参考", dir: "整合版式", count: 1 },
-    { id: "style", role: "风格", label: "风格参考", dir: "风格", count: 4 },
-    { id: "element", role: "元素", label: "元素参考", dir: "元素", count: 3 },
+    { id: "style", role: "风格", label: "风格参考", dir: "风格", count: 1 },
+    { id: "element", role: "元素", label: "元素参考", dir: "元素", count: 1 },
     { id: "character", role: "角色", label: "角色参考", dir: "角色", count: 1, when: "character" },
   ],
   scene_expansion_rules: [
@@ -974,17 +1010,13 @@ function globalTypesettingExecutionDescription(markdown = "") {
 
 function integratedLayoutExecutionDescription(markdown = "") {
   const relevantHeading = /(版式概述|文字视觉系统|主标题|副标题|活动时间|辅助信息|装饰信息|画面部分|主视觉区域|内容适配规则|主标题长度变化|信息缺失|执行指令)/;
-  const obsoletePolicy = /(装饰文案默认关闭|装饰信息默认关闭|不得自动生成英文|不新增装饰文案|禁止自动新增英文|用户未提供.*(?:装饰|英文).*(?:关闭|删除|不生成|不得新增))/;
   const sections = splitReferenceKnowledge(markdown).sections
     .filter((section) => relevantHeading.test(section.heading))
     .map((section) => {
-      const isDecorationSection = /装饰信息/.test(section.heading);
       const body = section.body
         .split("\n")
         .map((line) => line.trim())
-        .filter((line) => line
-          && !obsoletePolicy.test(line)
-          && !(isDecorationSection && /^(默认状态|启用条件|禁止规则)\s*[：:]/.test(line)))
+        .filter(Boolean)
         .join("\n");
       return body ? `${section.heading}\n${body}` : "";
     })
@@ -1118,6 +1150,30 @@ function allStylePresetCards() {
   ];
 }
 
+function integratedLayoutCardsForPreset(preset) {
+  const group = presetReferenceGroups(preset).find((item) => item.id === "integrated_layout");
+  if (!group) return [];
+  return loadPresetReferenceGroup(preset, group).map((variant) => ({
+    variant_id: variant.variant_id,
+    style_name: variant.style_name,
+    image: variant.image,
+    orientation: variant.composition_orientation,
+    layout_metadata: {
+      orientation: variant.layout_metadata?.orientation || "",
+      source_aspect_ratio: variant.layout_metadata?.source_aspect_ratio || "",
+      supported_slots: variant.layout_metadata?.supported_slots || {},
+      retrieval_tags: variant.layout_metadata?.retrieval_tags || [],
+    },
+  }));
+}
+
+function stylePresetCardsWithIntegratedLayouts() {
+  return allStylePresetCards().map((card) => ({
+    ...card,
+    integrated_layouts: integratedLayoutCardsForPreset(presetByStyleId(card.id)),
+  }));
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -1151,6 +1207,7 @@ function presetByStyleId(styleId) {
   if (styleId === OUTLINE_PRESET.preset_id) return OUTLINE_PRESET;
   if (styleId === MINIMAL_FLAT_PRESET.preset_id) return MINIMAL_FLAT_PRESET;
   if (styleId === REAL_PRODUCT_PRESET.preset_id) return REAL_PRODUCT_PRESET;
+  if (styleId === REAL_PERSON_PRESET.preset_id) return REAL_PERSON_PRESET;
   return loadCustomStylePresets().find((preset) => preset.preset_id === styleId) || null;
 }
 
@@ -2778,15 +2835,25 @@ function rankPresetReferenceCandidates(preset, group, request, creativePlan) {
     });
 }
 
+function manuallySelectedIntegratedLayout(preset, request = {}) {
+  const variantId = textOf(request.integrated_layout_variant).trim();
+  if (!variantId) return null;
+  const group = presetReferenceGroups(preset).find((item) => item.id === "integrated_layout");
+  if (!group) return null;
+  return loadPresetReferenceGroup(preset, group).find((variant) => variant.variant_id === variantId) || null;
+}
+
 function localReferenceSelections(candidateGroups = []) {
   return candidateGroups.flatMap(({ group, candidates }) => candidates.slice(0, Math.max(1, Number(group.count) || 1)).map((candidate) => ({
     role: group.role,
     variant_id: candidate.variant_id,
     score: Math.round(candidate.semantic_score * 100),
-    reason: `该参考的描述与当前创意蓝图中「${candidate.selection_query}」的语义匹配度最高，且满足当前画幅与${group.role}用途约束。`,
+    reason: candidate.manually_selected
+      ? "用户在风格弹窗中手动指定该整合版式；本次固定使用它控制文字视觉系统、信息比例、对齐与阅读顺序。"
+      : `该参考的描述与当前创意蓝图中「${candidate.selection_query}」的语义匹配度最高，且满足当前画幅与${group.role}用途约束。`,
     use_for: group.role === "整合版式" ? "文字视觉系统、信息层级、文字安全区、主视觉区域和整张KV的留白避让" : group.role === "字体" ? "标题字形、笔画和层级" : group.role === "排版" ? "主标题、副标题、补充信息、时间和主画面区之间的位置、比例、对齐和留白" : group.role === "日期" ? "时间字形与日期信息样式" : group.role === "角色" ? "角色比例、轮廓和动作语言" : group.role === "元素" ? "主体/道具造型与形态关系" : "整体风格、色彩、材质和商业完成度",
     do_not_copy: group.role === "整合版式"
-      ? "不复制原业务主标题、副标题、日期、品牌、版权、文字颜色或背景颜色；已有非业务装饰文字按原样保留，禁止改写或新增；白色区域仅代表主视觉生成区域"
+      ? "只保留用户明确填写的主标题、副标题和活动时间；删除参考图中没有对应用户字段的原业务文字、装饰文案、英文、日期、品牌、版权及其他可读文字，禁止改写或补写；装饰结构只复现参考图实际存在的非文字类型，禁止新增参考图没有的下划线、引号、框线、标签或符号；白色区域仅代表主视觉生成区域"
       : group.role === "排版"
         ? "不复制具体文字、字体字形、日期字形、文字颜色、品牌、logo、水印或无关画面内容"
       : "不复制具体文字、颜色、品牌、logo、水印或与本次主题无关的内容",
@@ -2795,13 +2862,31 @@ function localReferenceSelections(candidateGroups = []) {
 
 async function chooseProductionPresetVariant(preset, request, creativePlan) {
   const groups = activePresetReferenceGroups(preset, request, creativePlan);
-  const candidateGroups = groups.map((group) => ({
-    group,
-    candidates: rankPresetReferenceCandidates(preset, group, request, creativePlan).slice(0, 4),
-  })).filter((item) => item.candidates.length);
+  const requestedIntegratedLayout = manuallySelectedIntegratedLayout(preset, request);
+  const candidateGroups = groups.map((group) => {
+    if (group.id === "integrated_layout" && requestedIntegratedLayout) {
+      return {
+        group,
+        candidates: [{
+          ...requestedIntegratedLayout,
+          semantic_score: 1,
+          contextual_tiebreak: 1,
+          selection_query: "用户手动指定的整合版式",
+          manually_selected: true,
+        }],
+      };
+    }
+    return {
+      group,
+      candidates: rankPresetReferenceCandidates(preset, group, request, creativePlan).slice(0, 4),
+    };
+  }).filter((item) => item.candidates.length);
+  const hasManualIntegratedLayout = candidateGroups.some(({ group, candidates }) => (
+    group.id === "integrated_layout" && candidates.some((candidate) => candidate.manually_selected)
+  ));
   const fallbackSelections = localReferenceSelections(candidateGroups);
   let selections = fallbackSelections;
-  let selectionMethod = "semantic-contextual";
+  let selectionMethod = hasManualIntegratedLayout ? "manual-integrated-layout+semantic-contextual" : "semantic-contextual";
   if (OPENAI_API_KEY && ENABLE_REFERENCE_LLM_RERANK && candidateGroups.length) {
     try {
       const candidatePayload = candidateGroups.map(({ group, candidates }) => ({
@@ -2829,7 +2914,7 @@ async function chooseProductionPresetVariant(preset, request, creativePlan) {
       });
       if (Array.isArray(reranked.selections) && reranked.selections.length) {
         selections = reranked.selections;
-        selectionMethod = "semantic-llm-rerank";
+        selectionMethod = hasManualIntegratedLayout ? "manual-integrated-layout+semantic-llm-rerank" : "semantic-llm-rerank";
       }
     } catch {
       selections = fallbackSelections;
@@ -2947,6 +3032,7 @@ function applyIntegratedLayoutToDesign(design = {}, variant = null, request = {}
     explicitInformation.length ? `本次业务信息替换为：${explicitInformation.join("、")}` : "本次没有显式主业务文字，不创建主标题槽位",
     "主标题、副标题、活动时间必须分别继承参考图对应信息角色的字形风格、笔画/材质、字号比例、行数、位置、对齐与组合关系，不能退化成通用黑体、通用圆体或默认左对齐",
     INTEGRATED_LAYOUT_DECORATION_RULE,
+    integratedLayoutDecorativeCopyContext(request),
     "当本次标题字数与参考图不同，按参考图的内容适配规则重排；优先保持参考文字组的视觉重心、外轮廓和占区，不得因为字数减少就机械左对齐",
     "参考图里的白色或空白区域是主视觉生成区域，不是最终背景色要求；主体和场景在该区域内生成，并避开文字安全区",
     "文字颜色不继承参考图，由当前视觉方向和背景对比决定；副标题、活动时间与主标题保持同一颜色系统",
@@ -2967,7 +3053,11 @@ function applyIntegratedLayoutToDesign(design = {}, variant = null, request = {}
       rule: layoutKnowledge,
     },
     layout_outline: [layoutDirective, existingLayout].filter(Boolean).join("；"),
-    information_hierarchy: [existingHierarchy, colorRule, "主标题、副标题、活动时间及装饰文字的样式、大小比例、位置和对齐统一遵循整合版式参考；业务信息缺失时删除对应业务槽位，但保留参考图已有的装饰性文字角色与装饰结构"].filter(Boolean).join("；"),
+    information_hierarchy: [
+      existingHierarchy,
+      colorRule,
+      "可读文字只采用用户输入白名单：主标题、副标题、活动时间仅在对应字段有值时出现；可读信息槽位数量必须与本次实际填写字段数量一致。参考图中没有对应用户字段的副标题、说明、口号、英文眉题、品牌、版权、年份、日期及其他装饰文字全部删除并恢复留白，不得照抄、改写、联想、补全或占位；非文字装饰结构只闭集继承参考图已有类型",
+    ].filter(Boolean).join("；"),
     subject_expansion: {
       ...(design.subject_expansion || {}),
       information_area: [layoutDirective, existingInformationArea].filter(Boolean).join("；"),
@@ -3336,6 +3426,7 @@ function buildPresetDesign(request, brief, variant, preset = CLAY_PRESET) {
       && preset.preset_id === THREE_D_PRESET_ID
       && hasPersonIntent(request);
     const realProductEnabled = preset.preset_id === REAL_PRODUCT_PRESET_ID;
+    const realPersonEnabled = preset.preset_id === REAL_PERSON_PRESET_ID;
     const perspectiveDecision = threeDPersonEnabled ? threeDPersonPerspectiveDecision(request) : null;
     const perspectiveText = perspectiveDecision
       ? `人物大透视判断：镜头=${perspectiveDecision.camera}；前景锚点=${perspectiveDecision.foreground_anchor}，占画面30%-55%；人体=${perspectiveDecision.body_abstraction}；动作=${perspectiveDecision.motion_path}；场景=${perspectiveDecision.scene_depth}。`
@@ -3367,33 +3458,35 @@ function buildPresetDesign(request, brief, variant, preset = CLAY_PRESET) {
         ? `围绕用户描述「${explicitSubject}」提取人物主视觉主体，但必须做成抽象变形的3D人物/软胶玩具/潮流雕塑造型；${characterText}；${perspectiveText}`
         : petEnabled
           ? `围绕用户描述「${explicitSubject}」提取宠物主视觉主体，但必须做成极简扁平卡通宠物IP/品牌吉祥物/贴纸角色，不得生成写实猫狗、真实毛发或宠物摄影`
+          : realPersonEnabled
+            ? `围绕用户描述「${explicitSubject}」识别真实人物主体；人物必须保持真实人体比例、身份与五官结构稳定，面部、身体轮廓、发型、主要服装和动作清晰。如果用户通过@上传人物主体图，上传图是人物身份与外观的最高优先级事实来源，不得替换成其他人物`
           : realProductEnabled
             ? `围绕用户描述「${explicitSubject}」识别并塑造实体主商品；商品必须保持真实可信的结构、比例、包装、接口、屏幕、镜头或核心功能部位，并按所选实景商品参考建立商业摄影或写实CG主视觉`
             : `围绕用户描述「${explicitSubject}」提取一个明确主视觉主体，并按「${preset.preset_name}」的风格规则呈现${characterReference ? `；${characterText}` : ""}`,
-      subject_size_ratio: threeDPersonEnabled ? `前景锚点「${perspectiveDecision.foreground_anchor}」占画面30%-55%；人物主体被近大远小透视拉伸，占画面约45%-70%，标题区保留清晰留白` : realProductEnabled ? "主商品占有效画面面积30%-65%；极端特写时可提高到70%-85%，但必须保留关键结构与识别特征" : "主体占画面约35%-55%，根据排版参考和用户描述决定具体比例，必须成为第一视觉中心",
-      subject_relationship: threeDPersonEnabled ? `前景巨大锚点是第一空间压迫点，抽象变形人物沿${perspectiveDecision.motion_path}穿过画面，标题与主体分区清楚；辅助元素只用于强化速度感和纵深` : petEnabled ? "宠物IP角色是画面核心或核心互动主体，必须是扁平卡通造型；标题、宠物主体和少量辅助元素分区清楚，不生成真实宠物合影或摄影背景" : realProductEnabled ? "商品是唯一第一视觉焦点；多商品按主商品、次商品、功能道具、氛围元素建立层级；场景、人物局部和道具只解释商品，不与商品争夺注意力" : "主标题、主体和辅助元素分区清楚；辅助元素只服务主题和主体，不抢主视觉，不新增无关道具或信息",
+      subject_size_ratio: threeDPersonEnabled ? `前景锚点「${perspectiveDecision.foreground_anchor}」占画面30%-55%；人物主体被近大远小透视拉伸，占画面约45%-70%，标题区保留清晰留白` : realPersonEnabled ? "人物占有效画面面积35%-70%；根据全身、半身或近景构图与整合版式决定具体比例，必须成为第一视觉中心并避让固定文字层" : realProductEnabled ? "主商品占有效画面面积30%-65%；极端特写时可提高到70%-85%，但必须保留关键结构与识别特征" : "主体占画面约35%-55%，根据排版参考和用户描述决定具体比例，必须成为第一视觉中心",
+      subject_relationship: threeDPersonEnabled ? `前景巨大锚点是第一空间压迫点，抽象变形人物沿${perspectiveDecision.motion_path}穿过画面，标题与主体分区清楚；辅助元素只用于强化速度感和纵深` : petEnabled ? "宠物IP角色是画面核心或核心互动主体，必须是扁平卡通造型；标题、宠物主体和少量辅助元素分区清楚，不生成真实宠物合影或摄影背景" : realPersonEnabled ? "真实人物是第一视觉中心；场景、道具、背景和文字只服务人物与主题，不得遮挡人物面部、手部、身体轮廓和服装关键部位；上传人物图存在时，其他参考图不得改变人物身份或外观" : realProductEnabled ? "商品是唯一第一视觉焦点；多商品按主商品、次商品、功能道具、氛围元素建立层级；场景、人物局部和道具只解释商品，不与商品争夺注意力" : "主标题、主体和辅助元素分区清楚；辅助元素只服务主题和主体，不抢主视觉，不新增无关道具或信息",
       information_hierarchy: `${request.campaign_name ? `主标题「${request.campaign_name}」替换整合版式参考的主标题内容，并严格继承其视觉样式、面积比例、行数、位置、装饰和对齐逻辑；` : "用户未填写主标题，不编造业务主标题；"}${request.campaign_subtitle ? `副标题「${request.campaign_subtitle}」替换对应副标题内容并严格继承其相对比例和位置；` : ""}${request.campaign_time ? `活动时间「${request.campaign_time}」替换对应时间内容并严格继承其模块样式和对齐关系；` : ""}${INTEGRATED_LAYOUT_DECORATION_RULE}；文字颜色根据本次画面重定，副标题和活动时间与主标题使用统一颜色系统`,
       layout_outline: threeDPersonEnabled
         ? `参考排版图：${layoutText}。${perspectiveText} 构图必须以强镜头和巨大前景锚点为核心，形成S型/对角线/环形动势；标题区、主体区、辅助元素区和留白区清楚，不做过多细碎内容`
         : `参考整合版式图：${integratedLayoutText}。参考图中的白色/空白区域是主画面生成区域，不表示最终背景必须为白色。参考风格图：${styleText}。${elementReference ? `参考元素图：${elementText}。` : ""}文字区、主体区、辅助元素区和留白区清楚，不做过多细碎内容`,
-      background_atmosphere: threeDPersonEnabled ? `场景只服务镜头纵深：${perspectiveDecision.scene_depth}；背景保持干净，不堆砌元素` : realProductEnabled ? "背景和场景必须直接解释商品的功能、使用环境、季节或品牌气质；商品颜色丰富时简化背景，确保商品与背景在明度、冷暖或清晰度上分离" : "背景根据用户描述与风格参考建立，保持干净统一，避免复杂无关远景和杂乱元素",
+      background_atmosphere: threeDPersonEnabled ? `场景只服务镜头纵深：${perspectiveDecision.scene_depth}；背景保持干净，不堆砌元素` : realPersonEnabled ? "建立与主题相关的真实生活方式、商业人像或编辑式摄影场景；背景保持克制并与人物在明度、冷暖或景深上清晰分离，不抢人物主体" : realProductEnabled ? "背景和场景必须直接解释商品的功能、使用环境、季节或品牌气质；商品颜色丰富时简化背景，确保商品与背景在明度、冷暖或清晰度上分离" : "背景根据用户描述与风格参考建立，保持干净统一，避免复杂无关远景和杂乱元素",
       material_keywords: textureRules,
-      lighting_keywords: "参考风格图的光影方向、材质完成度和商业海报清晰度；主体清楚、边缘稳定、画面统一",
+      lighting_keywords: realPersonEnabled ? "真实商业摄影光影；人物与背景使用统一光源方向、色温、阴影和景深；面部与服装层次清楚，避免过度磨皮、塑料皮肤和明显AI合成感" : "参考风格图的光影方向、材质完成度和商业海报清晰度；主体清楚、边缘稳定、画面统一",
       typography_strategy: request.campaign_name
         ? `${integratedLayoutText}。整合版式参考是全部文字视觉样式的最高优先级模板：将主标题、副标题和活动时间替换为用户提供内容，同时严格保留参考图中各信息角色的字形气质、字号比例、位置、对齐、行数、间距、装饰与组合轮廓。${INTEGRATED_LAYOUT_DECORATION_RULE}。根据标题长度与参考图内容适配规则选择左对齐、居中、右对齐或自由组合，不得默认左对齐。不继承参考图文字颜色；主标题颜色依据本次画面重新确定，副标题、活动时间和同组文字保持统一颜色系统`
         : `用户未填写主标题；${request.campaign_subtitle || request.campaign_time ? "仅保留用户明确填写的副标题或活动时间，并按整合版式参考的次级信息样式排布" : "不生成标题、副标题、英文、日期或任何自动补充文字"}`,
       visual_direction: preset.style_group,
       spatial_strategy: threeDPersonEnabled ? `按当前画幅使用${compositionOrientation(request.image_size) === "Vertical" ? "Vertical" : compositionOrientation(request.image_size) === "Horizontal" ? "Horizontal" : "Square/通用"} composition；采用${perspectiveDecision.camera}，前景${perspectiveDecision.foreground_anchor}巨大化，人物和道具沿${perspectiveDecision.motion_path}组织空间纵深` : `按当前画幅使用${compositionOrientation(request.image_size) === "Vertical" ? "Vertical" : compositionOrientation(request.image_size) === "Horizontal" ? "Horizontal" : "Square/通用"} composition；${compositionRules}`,
-      camera_strategy: threeDPersonEnabled ? `镜头先行：${perspectiveDecision.camera}；禁止普通正面视角、普通站立、端坐或常规跑步视角` : realProductEnabled ? "从低机位英雄构图、对角线近景、中央产品家族、极近景尺度反差或放射式动态生态中选择最适合商品卖点的一种；只使用1-2种核心冲击手段，保持商品结构准确" : "镜头与主体摆放服从用户描述和主画面生成区域；保持主体稳定、信息清晰、画面有商业海报感",
+      camera_strategy: threeDPersonEnabled ? `镜头先行：${perspectiveDecision.camera}；禁止普通正面视角、普通站立、端坐或常规跑步视角` : realPersonEnabled ? "根据用户描述与整合版式，在全身、半身、近景、低机位、轻广角或编辑式抓拍中选择合适镜头；动作自然且与主题场景有叙事关系，人物面部和身体结构稳定" : realProductEnabled ? "从低机位英雄构图、对角线近景、中央产品家族、极近景尺度反差或放射式动态生态中选择最适合商品卖点的一种；只使用1-2种核心冲击手段，保持商品结构准确" : "镜头与主体摆放服从用户描述和主画面生成区域；保持主体稳定、信息清晰、画面有商业海报感",
       color_strategy: colorRules,
       scene_expansion_rules: preset.scene_expansion_rules || [],
       subject_expansion: {
-        subject: threeDPersonEnabled ? `人物主体必须抽象变形：${perspectiveDecision.body_abstraction}；${characterText}；整体像软胶玩具或潮流雕塑，不能是真实人体比例` : petEnabled ? `${petSubject}；如果用户描述中有猫、狗、小猫、小狗等，统一转译为极简扁平卡通宠物IP角色，使用圆润简化身体、纯净色块、极简五官和符号化表情` : realProductEnabled ? "从用户描述或上传图中确定主商品；保持商品外观、包装、比例、材质和核心卖点部位准确，建立可一眼识别的商业主视觉" : `提取用户描述中的核心主体；如果用户@上传图指定主体，则以上传图主体为准${characterReference ? `；${characterText}` : ""}`,
+        subject: threeDPersonEnabled ? `人物主体必须抽象变形：${perspectiveDecision.body_abstraction}；${characterText}；整体像软胶玩具或潮流雕塑，不能是真实人体比例` : petEnabled ? `${petSubject}；如果用户描述中有猫、狗、小猫、小狗等，统一转译为极简扁平卡通宠物IP角色，使用圆润简化身体、纯净色块、极简五官和符号化表情` : realPersonEnabled ? "从用户描述或上传图中确定真实人物主体；上传人物图存在时，严格保留人物身份、脸部特征、发型、主要服装和可见识别特征，人物不得被风格参考图中的人物替换" : realProductEnabled ? "从用户描述或上传图中确定主商品；保持商品外观、包装、比例、材质和核心卖点部位准确，建立可一眼识别的商业主视觉" : `提取用户描述中的核心主体；如果用户@上传图指定主体，则以上传图主体为准${characterReference ? `；${characterText}` : ""}`,
         foreground: threeDPersonEnabled ? `必须出现巨大前景锚点「${perspectiveDecision.foreground_anchor}」，占画面30%-55%，形成压迫式近大远小关系` : "只加入与主题直接相关的前景元素，数量克制",
         midground: threeDPersonEnabled ? `人物身体沿${perspectiveDecision.motion_path}穿过画面，形成S型/对角线/环形轨迹，像定格动画里的极限瞬间` : "主视觉主体稳定清晰，与标题形成明确层级",
-        background: threeDPersonEnabled ? `${perspectiveDecision.scene_depth}；背景保持干净，不堆砌元素，只强化空间纵深` : petEnabled ? "背景服从极简扁平插画风格，使用纯色或低复杂度色块，不生成真实室内摄影棚、真实镜头景深或真实光斑" : "背景服从当前风格预设和用户描述，保持干净统一",
-        props: threeDPersonEnabled ? `可用少量漂浮道具、巨大白色线条或轨迹穿插前后景强化速度感；辅助元素必须克制` : realProductEnabled ? "只使用能够说明商品功能、使用环境、季节或尺度的功能道具；所有道具清晰度、体积和对比均低于主商品" : `辅助元素参考当前风格的视觉语言${elementReference ? `：${elementText}` : ""}；控制数量，不做细碎堆叠`,
-        emotion: threeDPersonEnabled ? "强动势、潮流、夸张、玩具雕塑感、视觉冲击、极限瞬间" : (shared.mood || []).join("、") || "贴合用户描述和当前预设的视觉气质",
+        background: threeDPersonEnabled ? `${perspectiveDecision.scene_depth}；背景保持干净，不堆砌元素，只强化空间纵深` : petEnabled ? "背景服从极简扁平插画风格，使用纯色或低复杂度色块，不生成真实室内摄影棚、真实镜头景深或真实光斑" : realPersonEnabled ? "背景服从真实商业人像与生活方式摄影语言，保持光源、色温、阴影和景深统一，人物与背景清晰分离" : "背景服从当前风格预设和用户描述，保持干净统一",
+        props: threeDPersonEnabled ? `可用少量漂浮道具、巨大白色线条或轨迹穿插前后景强化速度感；辅助元素必须克制` : realPersonEnabled ? "只使用能够支持人物动作、主题和场景叙事的少量道具；不得遮挡面部、手部、身体轮廓和服装关键部位" : realProductEnabled ? "只使用能够说明商品功能、使用环境、季节或尺度的功能道具；所有道具清晰度、体积和对比均低于主商品" : `辅助元素参考当前风格的视觉语言${elementReference ? `：${elementText}` : ""}；控制数量，不做细碎堆叠`,
+        emotion: threeDPersonEnabled ? "强动势、潮流、夸张、玩具雕塑感、视觉冲击、极限瞬间" : realPersonEnabled ? "真实、自然、有态度、有场景关系、商业人物海报完成度" : (shared.mood || []).join("、") || "贴合用户描述和当前预设的视觉气质",
         information_area: `整合版式参考控制全部文字角色与主画面区域的关系；白色/空白区域用于生成主视觉，不是固定白底；${JSON.stringify(integratedLayoutMetadata.visual_area_bbox || {}) !== "{}" ? `主画面区域元数据：${JSON.stringify(integratedLayoutMetadata.visual_area_bbox)}` : ""}；用户填写的主标题、副标题和活动时间替换对应事实槽位；${INTEGRATED_LAYOUT_DECORATION_RULE}`,
       },
     };
@@ -3722,6 +3815,7 @@ function validateExpandRequest(body) {
     visual_description: visualDescription,
     image_size: SIZE_MAP[body.image_size] ? body.image_size : "3:4",
     style_preset: stylePreset,
+    integrated_layout_variant: textOf(body.integrated_layout_variant).trim(),
     reference_labels: Array.isArray(body.reference_labels) ? body.reference_labels : [],
     doudou_ip: isDoudouEnabled(body),
     include_logo: booleanPreference(body.include_logo, true),
@@ -4159,6 +4253,20 @@ function campaignSubtitleText(request = {}) {
   return textOf(request.campaign_subtitle).trim();
 }
 
+function integratedLayoutDecorativeCopyContext(request = {}) {
+  const title = textOf(request.campaign_name).trim();
+  const subtitle = campaignSubtitleText(request);
+  const time = campaignTimeText(request);
+  const allowed = [
+    title ? `主标题「${title}」` : "",
+    subtitle ? `副标题「${subtitle}」` : "",
+    time ? `活动时间「${time}」` : "",
+  ].filter(Boolean);
+  return allowed.length
+    ? `本次可读文字白名单仅包含：${allowed.join("；")}。白名单之外的参考图原文和模型联想文字全部删除，不得改写或补写`
+    : "本次可读文字白名单为空：删除参考图中的全部可读文字，只保留非文字装饰结构与空白版式";
+}
+
 function titleTimeText(request = {}) {
   const title = textOf(request.campaign_name).trim();
   const subtitle = campaignSubtitleText(request);
@@ -4264,15 +4372,54 @@ function uploadedReferenceScopeText(request, index = 0) {
   return contexts.length ? contexts.join(" ") : text;
 }
 
+function uploadedReferenceMentionInfo(request, index = 0) {
+  const text = `${request.visual_description} ${request.user_reference_usage || ""}`;
+  const label = request.reference_labels?.[index] || `图${index + 1}`;
+  const mentions = [...new Set([`@${label}`, `@图${index + 1}`])];
+  const occurrences = [];
+  for (const mention of mentions) {
+    let cursor = 0;
+    while (cursor < text.length) {
+      const mentionIndex = text.indexOf(mention, cursor);
+      if (mentionIndex < 0) break;
+      occurrences.push({
+        mention,
+        before: text.slice(Math.max(0, mentionIndex - 36), mentionIndex).replace(/\s+/g, ""),
+        after: text.slice(mentionIndex + mention.length, Math.min(text.length, mentionIndex + mention.length + 48)).replace(/\s+/g, ""),
+      });
+      cursor = mentionIndex + mention.length;
+    }
+  }
+  return occurrences;
+}
+
+function hasExplicitUploadedSubjectBinding(request, index = 0) {
+  return uploadedReferenceMentionInfo(request, index).some(({ before, after }) => {
+    const subjectTerms = "(?:主体|主视觉主体|主视觉|主角|产品|商品|人物|人像|对象)";
+    const beforePattern = new RegExp(`${subjectTerms}(?:为|是|采用|使用|选用|指定为)?$`);
+    const afterPattern = new RegExp(
+      `^(?:[（(]?USER_\\d+[）)]?)?(?:作为|用作|就是|为|是|设为|指定为)?${subjectTerms}`,
+    );
+    return beforePattern.test(before) || afterPattern.test(after);
+  });
+}
+
 function uploadedReferenceRole(request, index = 0) {
   const scopedText = uploadedReferenceScopeText(request, index);
+  const hasMention = uploadedReferenceMentionInfo(request, index).length > 0;
+  // Explicit identity binding always wins. Nearby words such as "主体位置",
+  // "构图", "自然光" or "氛围" describe how that subject should be staged;
+  // they must not turn the uploaded object into a layout or style reference.
+  if (hasExplicitUploadedSubjectBinding(request, index)) return "主体";
   if (/(字体|字形|字重|标题字|文字层级|字体参考|参考字体|字效|排版节奏)/.test(scopedText)) return "字体";
   if (/(构图|版式|布局|画面结构|空间关系|透视|主体位置|信息区|画面层级|参考构图|参考版式)/.test(scopedText)) return "构图";
-  if (/(?:作为|用作|仅作|只作|参考).{0,10}(?:风格|氛围|色彩|调性|质感|光影)|(?:风格|氛围|色彩|调性|质感|光影).{0,10}(?:参考|用途)/.test(scopedText)) return "风格";
-  if (/(人物|人像|女生|男生|模特|主视觉人物|主体人物|作为主体|作为主视觉|产品|商品|包装|瓶|盒|杯|罐|设备|物品|对象|主视觉产品|主体产品)/.test(scopedText)) return "主体";
+  if (/(?:作为|用作|仅作|只作|参考|用于).{0,24}(?:风格|氛围|色彩|调性|质感|光影)|(?:风格|氛围|色彩|调性|质感|光影).{0,16}(?:参考|用途|使用)/.test(scopedText)) return "风格";
+  if (/(人物|人像|女生|男生|模特|主视觉人物|主体人物|作为主体|作为主视觉|主体\s*(?:为|是)|主视觉\s*(?:为|是)|主角\s*(?:为|是)|产品|商品|包装|瓶|盒|杯|罐|设备|物品|对象|主视觉产品|主体产品)/.test(scopedText)) return "主体";
+  // A direct @ mention defaults to subject usage unless the user explicitly
+  // labels it as font, composition, or style above. Ambient words such as
+  // "光影" and "氛围" must not silently downgrade the uploaded object to style.
+  if (hasMention) return "主体";
   if (/(风格|氛围|色彩|调性|质感|光影|参考整体)/.test(scopedText)) return "风格";
-  const label = request.reference_labels?.[index] || `图${index + 1}`;
-  if (scopedText.includes(`@${label}`) || scopedText.includes(`@图${index + 1}`)) return "主体";
   return "补充参考";
 }
 
@@ -4309,13 +4456,16 @@ function uploadedReferenceUsage(request, index = 0) {
       ? "参考整体版式结构、画面层级、主体区域、标题区域、信息区位置和空间透视关系；不复制具体物体、品牌、人物或文字。"
       : "参考整体版式结构、画面层级、主体区域、信息区位置和空间透视关系；不复制具体物体、品牌、人物或文字。";
   }
-  if (/(人物|人像|女生|男生|模特|主视觉人物|主体人物|作为主体|作为主视觉)/.test(scopedText)) {
+  if (role === "主体" && uploadedReferenceSubjectKind(request, index) === "人物") {
     return "参考主视觉主体人物的身份外观、姿态气质、服装轮廓和人物占位关系；主体以这张用户上传图中的人物为核心，不复制无关背景。";
   }
-  if (/(产品|商品|包装|瓶|盒|杯|主视觉产品|主体产品)/.test(scopedText)) {
+  if (role === "主体" && uploadedReferenceSubjectKind(request, index) === "产品") {
     return "参考主视觉主体产品的外观结构、比例、材质和识别特征；主体以这张用户上传图中的产品为核心，不复制无关背景。";
   }
-  if (/(风格|氛围|色彩|调性|质感|光影|参考整体)/.test(scopedText)) {
+  if (role === "主体") {
+    return "参考用户上传图中的主视觉主体身份、外观轮廓、结构部件、比例、材质和识别特征；主体必须是图中同一对象，只允许调整摆放、动作、场景、构图与光影，不得替换成其他对象。";
+  }
+  if (role === "风格") {
     return "参考用户上传图的整体视觉风格、色彩调性和氛围，不复制其中的具体文字、品牌或无关元素。";
   }
   return "参考用户上传图中被用户提及的主体或视觉要点；仅作为当次生成的补充参考，不复制无关文字、品牌或背景。";
@@ -4362,13 +4512,14 @@ function integratedLayoutTypographyDirective(request, selected = []) {
       : "用户未提供主标题，删除主标题正文；不得自行编造业务主标题。",
     subtitle
       ? `把参考图的副标题内容替换为「${subtitle}」，严格继承参考图副标题相对主标题的字号比例、字重、位置、对齐轴、行数和间距。`
-      : "用户未提供副标题；不得自行编造业务副标题。参考图已有的非业务装饰文字仅按原样保留，不得改写。",
+      : "用户未提供副标题；删除参考图中的副标题、说明、口号、英文眉题及其他装饰文案槽位，不得自行编造或改写。",
     time
       ? `把参考图的时间内容替换为「${time}」，严格继承参考图时间模块的数字样式、字号比例、位置、对齐轴、组合方式和与主标题的距离。`
       : "用户未提供活动时间，删除事实性日期/时间内容，不得编造日期。",
     INTEGRATED_LAYOUT_DECORATION_RULE,
+    integratedLayoutDecorativeCopyContext(request),
     "不要机械套用左对齐。先观察参考图的真实视觉中心、文字组外轮廓和阅读动线，再结合本次主标题长度执行参考描述中的“主标题长度变化/内容适配规则”：短标题可放大、居中或保持参考图视觉中心；长标题可分行或压缩，但不得擅自统一为左对齐。",
-    "文字颜色不继承参考图；根据本次画面背景重新确定。副标题、活动时间及同组装饰文字与主标题保持统一颜色系统，除非参考图本身通过局部强调色建立明确层级。",
+    "文字颜色不继承参考图；根据本次画面背景重新确定。用户实际提供的副标题和活动时间与主标题保持统一颜色系统，除非参考图本身通过局部强调色建立明确层级。",
     execution ? `参考图可执行标注：\n${execution}` : "",
   ].filter(Boolean).join("\n");
 }
@@ -4394,7 +4545,7 @@ function referenceInstruction(item, index, request) {
         subtitle ? `副标题改为「${subtitle}」` : "删除副标题槽位",
         time ? `活动时间改为「${time}」` : "删除活动时间槽位",
       ].join("；");
-      return `${label} 是整合版式与文字视觉系统参考，优先级高于其他参考图：${providedText}。必须参考图 ${index + 1} 中所有可见信息角色的字形气质、笔画语言、字重、字号比例、行数、字距、行距、位置、对齐轴、组合轮廓、阅读顺序与装饰关系。${INTEGRATED_LAYOUT_DECORATION_RULE}。根据本次标题长度和参考图的内容适配规则决定左对齐、居中、右对齐或自由组合，不得默认左对齐。参考图中的白色或空白区域是主视觉画面的生成区域，不代表最终背景必须为白色。文字颜色根据本次画面重新确定。`;
+      return `${label} 是整合版式与文字视觉系统参考，优先级高于其他参考图：${providedText}。必须参考图 ${index + 1} 中所有可见信息角色的字形气质、笔画语言、字重、字号比例、行数、字距、行距、位置、对齐轴、组合轮廓、阅读顺序与装饰关系。${INTEGRATED_LAYOUT_DECORATION_RULE}。${integratedLayoutDecorativeCopyContext(request)}。根据本次标题长度和参考图的内容适配规则决定左对齐、居中、右对齐或自由组合，不得默认左对齐。参考图中的白色或空白区域是主视觉画面的生成区域，不代表最终背景必须为白色。文字颜色根据本次画面重新确定。`;
     }
     if (role === "字体") {
       const replacement = [title ? `主标题「${title}」` : "", subtitle ? `副标题「${subtitle}」` : ""].filter(Boolean).join("、");
@@ -4492,24 +4643,35 @@ function integratedLayoutConstraint(request, selected = []) {
   const reference = selected[referenceIndex];
   const metadata = reference.layout_metadata || {};
   const safeZones = Array.isArray(metadata.text_safe_zones) ? metadata.text_safe_zones : [];
+  const targetOrientation = compositionOrientation(request.image_size);
+  const sourceOrientation = reference.composition_orientation || referenceCompositionOrientation("", "", metadata);
+  const manuallySelected = textOf(request.integrated_layout_variant).trim() === reference.variant_id;
+  const manualOrientationMismatch = manuallySelected
+    && sourceOrientation
+    && sourceOrientation !== "Any"
+    && sourceOrientation !== targetOrientation;
   const enabledRoles = new Set([
     hasMainTitle(request) ? "main_title" : "",
     campaignSubtitleText(request) ? "subtitle" : "",
     campaignTimeText(request) ? "time" : "",
   ].filter(Boolean));
   const roleNames = { main_title: "主标题", subtitle: "副标题", time: "活动时间", auxiliary_info: "辅助信息" };
-  const zoneLines = safeZones
+  const zoneLines = (manualOrientationMismatch ? [] : safeZones)
     .filter((zone) => enabledRoles.has(zone.role))
     .map((zone) => `${roleNames[zone.role] || zone.role}区域：${normalizedBboxText(zone.bbox)}`)
     .filter(Boolean);
-  const activeTextGroup = normalizedBboxText(metadata.active_text_group_bbox);
-  const visualArea = normalizedBboxText(metadata.visual_area_bbox);
+  const activeTextGroup = manualOrientationMismatch ? "" : normalizedBboxText(metadata.active_text_group_bbox);
+  const visualArea = manualOrientationMismatch ? "" : normalizedBboxText(metadata.visual_area_bbox);
   const sharedRightEdge = Number(metadata.shared_right_edge);
   const tolerance = Number(metadata.alignment_tolerance);
   const alignmentLines = [];
-  if (metadata.text_group_horizontal_alignment === "center" && activeTextGroup) {
-    const bbox = metadata.active_text_group_bbox.map(Number);
-    alignmentLines.push(`活跃文字组整体区域：${activeTextGroup}；其水平中心固定在画布 ${normalizedPercent(bbox[0] + bbox[2] / 2)} 附近，不得整组向左或向右漂移。`);
+  if (metadata.text_group_horizontal_alignment === "center") {
+    if (activeTextGroup) {
+      const bbox = metadata.active_text_group_bbox.map(Number);
+      alignmentLines.push(`活跃文字组整体区域：${activeTextGroup}；其水平中心固定在画布 ${normalizedPercent(bbox[0] + bbox[2] / 2)} 附近，不得整组向左或向右漂移。`);
+    } else if (manualOrientationMismatch) {
+      alignmentLines.push("活跃文字组在目标画幅中保持整体水平居中，迁移时不得退化成默认左对齐。");
+    }
   }
   if (metadata.main_title_alignment && hasMainTitle(request)) {
     const alignmentLabel = {
@@ -4522,9 +4684,12 @@ function integratedLayoutConstraint(request, selected = []) {
   }
   if (metadata.main_title_time_alignment === "right_edge"
       && hasMainTitle(request)
-      && campaignTimeText(request)
-      && Number.isFinite(sharedRightEdge)) {
-    alignmentLines.push(`主标题与活动时间必须共用 x=${normalizedPercent(sharedRightEdge)} 的右边界垂直对齐轴，两者右边界必须对齐，允许偏差不超过画布宽度的 ${normalizedPercent(Number.isFinite(tolerance) ? tolerance : 0.02)}。`);
+      && campaignTimeText(request)) {
+    if (manualOrientationMismatch) {
+      alignmentLines.push("主标题与活动时间在目标画幅中继续共用同一条右边界对齐轴；只允许整体缩放和位移，不得拆散该关系。");
+    } else if (Number.isFinite(sharedRightEdge)) {
+      alignmentLines.push(`主标题与活动时间必须共用 x=${normalizedPercent(sharedRightEdge)} 的右边界垂直对齐轴，两者右边界必须对齐，允许偏差不超过画布宽度的 ${normalizedPercent(Number.isFinite(tolerance) ? tolerance : 0.02)}。`);
+    }
   }
   if (campaignSubtitleText(request) && metadata.subtitle_alignment) {
     const subtitleAlignment = {
@@ -4552,15 +4717,22 @@ function integratedLayoutConstraint(request, selected = []) {
     subtitle ? `副标题替换为「${subtitle}」` : "不编造事实性副标题",
     time ? `活动时间替换为「${time}」` : "不编造日期或时间",
   ].join("；");
+  const orientationMigrationRule = manualOrientationMismatch
+    ? `用户手动选择的是${sourceOrientation === "Horizontal" ? "横版" : sourceOrientation === "Vertical" ? "竖版" : "其他方向"}参考，但最终画幅严格为 ${request.image_size}（${targetOrientation}）。只迁移参考图的文字视觉系统、信息比例、相互位置、对齐轴、组合轮廓和阅读顺序，并在目标画幅中等比例自适应重排；不得改变输出尺寸，也不得机械复制源画幅坐标。`
+    : "";
   return [
     "【整合版式最终执行锁（优先级高于风格、元素、角色与前文概括）】",
     `图 ${referenceIndex + 1}（${reference.number}）是文字视觉系统和整张KV区域布局的唯一依据。样式优先级高于文字内容；不得因为主体、风格或其他参考图改变文字组整体中心、信息比例、装饰关系、时间位置或对齐轴。`,
     `${textReplacementLock}。严格继承参考图各信息角色的字形气质、字号比例、位置、行数、间距、对齐轴和组合轮廓。${INTEGRATED_LAYOUT_DECORATION_RULE}。`,
+    integratedLayoutDecorativeCopyContext(request),
+    orientationMigrationRule,
     "根据本次主标题长度和参考图的内容适配规则决定左对齐、居中、右对齐或自由组合；保持参考图的视觉中心和文字组外轮廓，禁止默认套用左对齐。",
     ...zoneLines,
     ...alignmentLines,
     visualArea ? `主视觉生成区：${visualArea}。主体和高密度场景必须位于此区域，不得侵入上方文字安全区。` : "",
-    "上述坐标是归一化画布坐标，是硬约束而非可选建议。风格参考只控制渲染、材质、光影和完成度；元素和角色参考只控制造型，都不得改写本版式锁。",
+    manualOrientationMismatch
+      ? "上述相对比例、对齐关系和阅读顺序是硬约束。风格参考只控制渲染、材质、光影和完成度；元素和角色参考只控制造型，都不得改写本版式锁。"
+      : "上述坐标是归一化画布坐标，是硬约束而非可选建议。风格参考只控制渲染、材质、光影和完成度；元素和角色参考只控制造型，都不得改写本版式锁。",
   ].filter(Boolean).join("\n");
 }
 
@@ -4618,7 +4790,7 @@ function buildFinalPrompt(request, design, selected) {
   const integratedTypography = integratedLayoutTypographyDirective(request, selected);
   const hasIntegratedLayout = selected.some((item) => (item.role || item.type) === "整合版式");
   const decorativeTextPolicy = hasIntegratedLayout
-    ? INTEGRATED_LAYOUT_DECORATION_RULE
+    ? `${INTEGRATED_LAYOUT_DECORATION_RULE}。${integratedLayoutDecorativeCopyContext(request)}`
     : "不要自动新增未提及的标题、副标题、辅助文案、品牌信息、英文、日期、价格、标签、版权信息或说明文字。";
   const uploadedRefs = selected.filter((item) => item.source === "用户上传");
   const uploadedSubjectNote = uploadedRefs.length
@@ -4663,6 +4835,13 @@ function buildFinalPrompt(request, design, selected) {
   const realProductNegative = realProductEnabled
     ? "\n实景商品禁止项：禁止商品缩小为普通道具，禁止多个同权重视觉中心，禁止无目的堆叠装饰，禁止商品与背景粘连，禁止破坏商品真实结构、比例、接口、屏幕、镜头、包装、品牌识别和核心功能部位，禁止人物、手部、文字或道具遮挡商品卖点。"
     : "";
+  const realPersonEnabled = design.preset_id === REAL_PERSON_PRESET.preset_id;
+  const realPersonBlock = realPersonEnabled
+    ? "\n\n【真实人物主视觉约束】\n人物是第一视觉中心，保持真实人体比例、完整肢体、稳定身份、五官结构、发型和主要服装。如用户上传人物主体图，该图是人物身份与外观的最高优先级事实来源；风格参考图只控制摄影方式、光影、色彩、材质与商业完成度，不得替换人物。人物动作需与主题场景形成明确关系，人物与背景使用统一光源、色温、阴影和景深；不得遮挡人物面部、手部、身体轮廓和服装关键部位。"
+    : "";
+  const realPersonNegative = realPersonEnabled
+    ? "\n真实人物禁止项：禁止替换用户上传人物，禁止人物身份漂移，禁止擅改脸型、五官、发型或主要服装，禁止肢体缺失、重复、错位和手部错误，禁止过度磨皮、塑料皮肤以及人物与背景光影不一致。"
+    : "";
   const threeDPersonEnabled = Boolean(design.three_d_person_perspective_constraint?.enabled);
   const threeDPersonDecision = threeDPersonEnabled ? design.three_d_person_perspective_constraint : null;
   const threeDPersonBlock = threeDPersonEnabled ? `\n\n${threeDPersonPerspectiveBlock(threeDPersonDecision)}` : "";
@@ -4677,7 +4856,7 @@ function buildFinalPrompt(request, design, selected) {
   const doudouNegative = doudouEnabled
     ? "\n兜兜IP禁止项：禁止遗漏兜兜；禁止给兜兜生成手、手掌、手臂、胳膊、手指、嘴、嘴唇、牙齿、舌头或任何口部结构；禁止替换为其他角色。"
     : "";
-  const subjectIsPerson = threeDPersonEnabled || y3kEnabled || /人物|真人|模特|女生|女孩|男生|男孩|小女孩|小男孩|人像|手持|这个人物/.test(`${design.main_visual_subject} ${request.visual_description} ${uploadedSubjectNote}`);
+  const subjectIsPerson = realPersonEnabled || threeDPersonEnabled || y3kEnabled || /人物|真人|模特|女生|女孩|男生|男孩|小女孩|小男孩|人像|手持|这个人物/.test(`${design.main_visual_subject} ${request.visual_description} ${uploadedSubjectNote}`);
   const subjectIsProduct = !uploadedPersonSubject && /产品|商品|包装|杯|瓶|罐|盒|设备|手机|耳机|手表|相机|家电|器具/.test(`${design.main_visual_subject} ${request.visual_description}`);
   const overlayInformation = [
     request.include_logo ? "左上角真实Logo由系统后处理叠加；模型只需保持自然、干净、低复杂度背景，不绘制任何安全区、占位或提示。" : "",
@@ -4695,7 +4874,7 @@ ${refs}
 材质关键词：${design.material_keywords || "真实材质、商业摄影质感、清晰体积"}
 光影关键词：${design.lighting_keywords || "商业棚拍柔光、主体清晰、统一光源"}
 整体视觉需要统一、干净、具有商业海报感。画面要有留白，不做过多细碎内容。避免背景杂乱、色彩脏乱或混浊、风格不统一、廉价拼贴感、低清晰度、低质感、草图感、随意拼图感和高饱和混乱配色。
-${petBlock}${scrapbookBlock}${y3kBlock}${handDrawnBlock}${minimalFlatBlock}${realProductBlock}${threeDPersonBlock}${doudouBlock}
+${petBlock}${scrapbookBlock}${y3kBlock}${handDrawnBlock}${minimalFlatBlock}${realProductBlock}${realPersonBlock}${threeDPersonBlock}${doudouBlock}
 
 三、空间、透视与构图规则
 标题区域位置：${design.integrated_layout_reference ? "严格参考已选整合版式图中的文字区域、对齐方式和安全区" : "与主视觉主体分区明确，优先放在主体另一侧的信息区"}。
@@ -4744,11 +4923,11 @@ ${doudouEnabled ? "除兜兜IP外，如本项目不涉及人物，禁止自动�
 如本项目主体为人物，则禁止人物动作变形、手部畸形和五官崩坏。
 禁止多透视拼贴、素材贴图感、元素漂浮、地面关系错误。
 禁止背景杂乱、高饱和混乱配色和低完成度质感。
-${petNegative}${scrapbookNegative}${y3kNegative}${handDrawnNegative}${minimalFlatNegative}${realProductNegative}${threeDPersonNegative}${doudouNegative}
+${petNegative}${scrapbookNegative}${y3kNegative}${handDrawnNegative}${minimalFlatNegative}${realProductNegative}${realPersonNegative}${threeDPersonNegative}${doudouNegative}
 如本项目涉及产品，禁止产品结构错误、产品样式跑偏和产品logo错误。如本项目不涉及产品，则禁止自动新增无关产品或品牌元素。
 禁止标题乱码、错字、错误替换和无关文字。
 禁止非本项目指定的辅助元素喧宾夺主。
-${hasIntegratedLayout ? "禁止添加整合版式参考中不存在的额外文字角色；参考图已有的非业务装饰文字只可原样保留，禁止翻译、改写、替换或扩写。" : "禁止自动添加任何没有提及的其他文字。"}
+${hasIntegratedLayout ? "禁止添加整合版式参考中不存在的额外文字槽位或装饰结构；除用户明确填写的主标题、副标题和活动时间外，删除参考图中的全部可读文字，禁止保留、改写或补写；禁止自行增加参考图中不存在的下划线、引号、括号、框线、标签、角标、强调线或其他装饰笔画。" : "禁止自动添加任何没有提及的其他文字。"}
 禁止固定图层错误、文字错误、风格跑偏、主体识别度弱、空间透视错误、杂乱拼贴感、背景脏乱、材质粗糙、清晰度不足，以及与参考图用途不符的误参考。
 
 最终画幅：${request.image_size}。`;
@@ -4897,6 +5076,285 @@ async function makeTitleTransparent(sourcePath) {
   });
 }
 
+function integratedLayoutReference(selected = []) {
+  return selected.find((item) => (item.role || item.type) === "整合版式") || null;
+}
+
+function hasVisibleTypography(request = {}) {
+  return Boolean(
+    textOf(request.campaign_name).trim()
+    || campaignSubtitleText(request)
+    || campaignTimeText(request),
+  );
+}
+
+function publicImageLayer(result = {}) {
+  if (!result || result.skipped) return result;
+  const {
+    output_path,
+    transparent_path,
+    raw_output_path,
+    prompt,
+    ...publicResult
+  } = result;
+  return publicResult;
+}
+
+function compactValue(value, limit = 220) {
+  const normalized = textOf(value).replace(/\s+/g, " ").trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, Math.max(0, limit - 1)).trim()}…`;
+}
+
+function compactDesignLines(design = {}) {
+  return [
+    ["主体", design.main_visual_subject],
+    ["主体关系", design.subject_relationship],
+    ["视觉", design.visual_keywords || design.visual_direction],
+    ["色彩", design.color_direction || design.color_strategy],
+    ["背景", design.background_atmosphere],
+    ["材质", design.material_keywords],
+    ["光影", design.lighting_keywords],
+    ["镜头", design.camera_strategy],
+  ]
+    .filter(([, value]) => compactValue(value))
+    .map(([label, value]) => `${label}：${compactValue(value)}`);
+}
+
+function compactReferenceLines(selected = [], startIndex = 1) {
+  return selected.map((item, index) => {
+    const role = textOf(item.role || item.type || "参考图").trim();
+    const useFor = compactValue(item.selection_use_for || item.reason || item.Reference || item.description, 120);
+    return `图 ${startIndex + index}（${item.number}）：仅参考${role}${useFor ? `，用于${useFor}` : ""}。`;
+  });
+}
+
+function buildTypographyLayerPrompt(request, integratedReference, correction = "") {
+  const title = textOf(request.campaign_name).trim();
+  const subtitle = campaignSubtitleText(request);
+  const time = campaignTimeText(request);
+  const allowedText = [
+    title ? `主标题「${title}」` : "",
+    subtitle ? `副标题「${subtitle}」` : "",
+    time ? `活动时间「${time}」` : "",
+  ].filter(Boolean);
+  const replacements = [
+    title ? `主标题改为「${title}」` : "删除主标题槽位",
+    subtitle ? `副标题改为「${subtitle}」` : "删除全部副标题、说明、口号、英文眉题和装饰文案槽位",
+    time ? `活动时间改为「${time}」` : "删除全部日期、时间、年份、周期和数字信息槽位",
+  ];
+  return [
+    "任务：生成第一步整合版式图，只参考图 1。",
+    `文字替换：${replacements.join("；")}。`,
+    allowedText.length
+      ? `【可读文字白名单】画面中唯一允许出现的文字是：${allowedText.join("；")}。必须逐字准确；除此之外不得出现任何汉字、字母、数字、符号组合或可读文案。`
+      : "【可读文字白名单】为空。删除图 1 中全部可读文字，不得生成任何汉字、字母、数字、符号组合或文案。",
+    `【信息槽位数量】本次允许的可读文字信息槽位总数为 ${allowedText.length}。白名单中的每个字段只能出现一次；白名单既约束文字内容，也约束可读信息槽位数量。${allowedText.length === 1 ? "本次最终只能保留一个可读文字信息组，不得保留参考图中的任何其他文字组。" : ""}`,
+    "严格继承图 1 中对应信息的字形风格、字号比例、行数、字距、位置、对齐轴、组合轮廓与阅读顺序。",
+    "图 1 已有的引号、括号、框线、标签底形、角标底形、分隔线和装饰符号等非文字结构可按原数量与位置保留；其中原有文字必须清空。图 1 没有的结构禁止新增。",
+    "白名单之外的参考图原文、装饰文字、英文、品牌、版权、年份、地点、说明和口号必须删除，不能保留、照抄、改写、联想、补全或用近义文案占位；删除后恢复为干净留白。",
+    "不要生成场景、人物、产品、道具、Logo、水印或白名单之外的任何参考图文字。",
+    "完整保留参考版式中的主画面空白区；该区域只使用干净、低复杂度、无纹理的平整背景，不放置任何主体或场景，供第二步生成主画面。",
+    "文字颜色与背景颜色可以根据本次主题建立清晰对比，但不得改变参考图的信息布局、文字视觉系统或装饰结构。",
+    correction ? `返修：${compactValue(correction, 320)}` : "",
+    integratedReference?.layout_metadata?.adaptation_rules
+      ? `长度适配：${compactValue(integratedReference.layout_metadata.adaptation_rules, 240)}；只适用于白名单中的文字，绝不能恢复或生成其他文字槽位。`
+      : "",
+  ].filter(Boolean).join("\n");
+}
+
+function sceneReferences(selected = []) {
+  const excludedRoles = new Set(["整合版式", "字体", "日期", "排版", "构图"]);
+  return selected.filter((item) => !excludedRoles.has(item.role || item.type));
+}
+
+function finalKvReferenceLines(selected = [], startIndex = 2) {
+  return selected.map((item, index) => {
+    const figure = `图 ${startIndex + index}（${item.number}）`;
+    const role = textOf(item.role || item.type || "参考图").trim();
+    if (item.source === "用户上传" && role === "主体") {
+      return `${figure}为用户主体参考：它是主体身份、外观、结构、比例、材质和识别特征的唯一依据，只允许调整动作、场景、构图与光影，禁止替换成其他对象。`;
+    }
+    if (item.source === "兜兜IP") {
+      return `${figure}为兜兜IP参考：用于保持兜兜的身份、袋身结构、眼睛、提手与腿脚特征，并参考符合场景的动作状态。`;
+    }
+    if (role === "风格") {
+      return `${figure}为风格参考：用于参考主体与场景的视觉风格、色彩调性、材质质感和商业完成度。`;
+    }
+    if (role === "角色") {
+      return `${figure}为角色参考：用于参考主体角色的动作体态、形体比例、造型语言和五官表情。`;
+    }
+    if (role === "元素") {
+      return `${figure}为元素参考：用于参考相关道具与辅助元素的造型、比例、材质和细节处理。`;
+    }
+    return `${figure}为${role || "画面"}参考：只影响其指定内容，不得改写图 1 的固定版式与文字。`;
+  });
+}
+
+function buildFinalKvFromTypographyPrompt(request, design, selected = [], correction = "") {
+  const referenceLines = finalKvReferenceLines(selected, 2);
+  const uploadedSubject = selected.some((item) => item.source === "用户上传" && (item.role || item.type) === "主体");
+  const expansion = design.subject_expansion || {};
+  const perspective = compactValue(design.camera_strategy || design.spatial_strategy, 180);
+  const subjectPosition = compactValue(design.subject_position || design.layout_outline || expansion.midground, 180);
+  const layers = compactValue(
+    [expansion.foreground, expansion.midground, expansion.background].filter(Boolean).join("；"),
+    240,
+  );
+  const lighting = compactValue(design.lighting_keywords, 160);
+  const subject = compactValue(design.main_visual_subject || expansion.subject || request.visual_description, 240);
+  const appearance = compactValue(
+    [expansion.subject, design.material_keywords, design.visual_keywords || design.visual_direction].filter(Boolean).join("；"),
+    260,
+  );
+  const ratio = compactValue(design.subject_size_ratio, 80);
+  const relationship = compactValue(design.subject_relationship, 220);
+  const props = compactValue(expansion.props, 200);
+  return [
+    "一、参考图说明",
+    "1. 图 1 是第一步生成的固定信息层参考。只把其中已有的文字、标签、框线、角标、分隔线和装饰符号视为不可变内容，完整复制它们的样式、颜色、大小与位置。图 1 中的白色、纯色或空白背景不属于固定内容，可以重绘为连续的主体、背景与场景。",
+    ...referenceLines,
+    "二、固定图层与不可变内容",
+    "图 1 的信息内容是最高优先级固定前景层：文字、字形、颜色、字号、行数、间距、对齐、位置、标签、框线、角标、分隔线与装饰符号必须原样保留，不得重绘、改写、移动、缩放、遮挡或替换。",
+    "【固定说明】完全复制第一步图片中的信息层，禁止改变其颜色、位置和大小，禁止调整成相似元素；不要锁定、复制或保留图 1 的空白底色。主体、背景和场景可以在信息层下方连续铺展。",
+    "三、空间、透视与构图规则",
+    `最终画幅：${request.image_size || "按用户选择"}。`,
+    perspective ? `透视与镜头：${perspective}` : "",
+    subjectPosition
+      ? `主体区域位置：${subjectPosition}；可进入文字所在的大区域，但必须避开实际字形和固定装饰轮廓。`
+      : "主体位置根据全画面视觉重心和实际字形轮廓确定；文字所在的整块矩形区域不是禁区。",
+    layers ? `画面层次：${layers}` : "",
+    lighting ? `光影：${lighting}` : "",
+    "主体、背景与场景应形成一张连续画面，可以延伸到固定文字层下方并与信息区域自然叠合。主体轮廓不得压住实际字形、标签、框线和装饰符号；如发生冲突，应微调主体位置、姿态或比例，而不是把画面切成独立区域。",
+    "文字周围使用简洁、低细节、低纹理频率且对比稳定的背景，通过自然光影、景深或色彩渐变柔和过渡，保证文字清晰。除非图 1 本身明确存在实体色块或分隔结构，否则禁止新增白色顶栏、纯色信息板、水平硬边界、矩形蒙版或上下分屏；禁止在文字区边缘截断主体或场景。",
+    "四、主体设定",
+    `主视觉主体：${subject || "严格依据用户画面描述确定"}。`,
+    appearance ? `主体外观与动作：${appearance}` : "",
+    ratio ? `主体占比：${ratio}` : "",
+    relationship ? `主体与其他元素关系：${relationship}` : "",
+    "主体必须清晰、稳定并形成视觉焦点，不能淹没在背景中，也不能被装饰元素抢走视觉中心；主体可以与信息区域空间叠合，但不得遮挡实际文字和固定装饰。",
+    uploadedSubject
+      ? "用户上传的主体参考是对象身份唯一依据：保留其类别、轮廓、结构、包装比例、材质和可见识别特征，只改变场景、构图与光影，禁止替换成其他对象。"
+      : "",
+    isDoudouEnabled(request)
+      ? "必须出现兜兜IP；兜兜没有手、手掌、手臂、胳膊和嘴巴，只通过眼睛、袋身、提手、腿脚与身体倾斜表达动作。"
+      : "",
+    "五、辅助元素",
+    props ? `允许的辅助元素：${props}` : "只允许加入与主题和主体直接相关的少量辅助元素。",
+    "辅助元素只能服务主体与主题，不得喧宾夺主；避免数量过多、比例混乱、漂浮无依附、风格不统一或误加无关道具、人物与品牌。背景、场景道具、图标和小装饰只能弱化呈现。",
+    `用户画面描述：${compactValue(request.visual_description, 420)}`,
+    "图 2 及后续参考图只控制各自指定的风格、主体、元素或材质，不得改写图 1。禁止新增标题、副标题、日期、英文、数字、标签、价格、Logo、水印、招牌文字、包装新增文字或任何可读字符。",
+    correction ? `返修：${compactValue(correction, 320)}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function buildCompactOneShotPrompt(request, design, selected = [], correction = "") {
+  const title = textOf(request.campaign_name).trim();
+  const subtitle = campaignSubtitleText(request);
+  const time = campaignTimeText(request);
+  const textLine = [
+    title ? `主标题「${title}」` : "",
+    subtitle ? `副标题「${subtitle}」` : "",
+    time ? `时间「${time}」` : "",
+  ].filter(Boolean).join("；");
+  return [
+    "生成一张高完成度商业 KV。",
+    ...compactReferenceLines(selected, 1),
+    `用户画面描述：${compactValue(request.visual_description, 520)}`,
+    ...compactDesignLines(design),
+    textLine
+      ? `只呈现以下文字：${textLine}；主标题层级最高，副标题和时间次之，禁止新增其他文字。`
+      : "画面不包含任何标题、日期或其他文字。",
+    selected.some((item) => item.source === "用户上传" && (item.role || item.type) === "主体")
+      ? "用户上传主体是对象身份唯一依据，必须保留原对象类别、结构、比例、材质和识别特征，禁止替换。"
+      : "",
+    correction ? `返修：${compactValue(correction, 320)}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function buildCompactExecutionPrompt(request, design, selected = [], correction = "") {
+  const integrated = integratedLayoutReference(selected);
+  if (!integrated || !hasVisibleTypography(request)) {
+    return buildCompactOneShotPrompt(request, design, selected, correction);
+  }
+  return buildFinalKvFromTypographyPrompt(request, design, sceneReferences(selected), correction);
+}
+
+async function generateLayeredImage(request, design, selected, onStage = () => {}, correction = "") {
+  const integrated = integratedLayoutReference(selected);
+  if (!integrated || !hasVisibleTypography(request)) {
+    const prompt = buildCompactOneShotPrompt(request, design, selected, correction);
+    const image = await generateImage(request, prompt, selected);
+    return { image, prompt, mode: "one-shot" };
+  }
+
+  const size = SIZE_MAP[request.image_size] || "1024x1024";
+  const typographyPrompt = buildTypographyLayerPrompt(request, integrated, correction);
+  onStage("status", { message: "正在生成第一步文字版式图..." });
+  const typography = await generateImageEditFile({
+    prompt: typographyPrompt,
+    selected: [integrated],
+    size,
+    prefix: "kv-typography",
+  });
+  if (typography.skipped) {
+    return {
+      image: typography,
+      prompt: buildFinalKvFromTypographyPrompt(request, design, sceneReferences(selected), correction),
+      mode: "two-stage-reference",
+    };
+  }
+  onStage("typography", { typography_layer: publicImageLayer(typography) });
+
+  const stageOneReference = outputReference(
+    typography.url,
+    "STAGE1_FIXED_LAYOUT",
+    "第一步生成的固定信息层参考；文字与已有装饰必须原样保留，空白底色不固定，主体与场景可以在信息层下方连续铺展。",
+  );
+  const sceneSelected = sceneReferences(selected).slice(0, 9);
+  const finalSelected = [stageOneReference, ...sceneSelected];
+  const finalPrompt = buildFinalKvFromTypographyPrompt(request, design, sceneSelected, correction);
+
+  onStage("status", { message: "正在以第一步版式图为固定参考生成完整 KV..." });
+  const finalImage = await generateImageEditFile({
+    prompt: finalPrompt,
+    selected: finalSelected,
+    size,
+    prefix: "kv-two-stage",
+  });
+  if (finalImage.skipped) {
+    return {
+      image: finalImage,
+      prompt: finalPrompt,
+      mode: "two-stage-reference",
+    };
+  }
+  onStage("scene", { scene_layer: publicImageLayer(finalImage) });
+
+  onStage("compose", { status: "running", message: "正在处理已勾选的品牌固定图层..." });
+  const overlay = await applyLogoOverlay(finalImage.output_path, request);
+  const image = {
+    skipped: false,
+    name: finalImage.name,
+    url: finalImage.url,
+    size,
+    reference_images: selected.map((item) => item.number),
+    logo_overlay: overlay?.logo_overlay || null,
+    search_overlay: overlay?.search_overlay || null,
+    generation_mode: "two-stage-reference",
+    layers: {
+      typography: publicImageLayer(typography),
+      scene: publicImageLayer(finalImage),
+    },
+  };
+  onStage("compose", { status: "done", image_result: image });
+  return {
+    image,
+    prompt: finalPrompt,
+    mode: "two-stage-reference",
+  };
+}
+
 async function generateImage(request, prompt, selected) {
   if (!OPENAI_API_KEY) {
     return { skipped: true, reason: "缺少 OPENAI_API_KEY，已跳过最终生图。" };
@@ -5028,10 +5486,9 @@ async function runPipeline(request, onStage = () => {}) {
       onStage("timing", { stage, duration_ms: durationMs, total_stage_ms: stageTimings[stage] });
     }
   };
-  const [briefSystem, designSystem, promptSystem] = await measure("bootstrap", () => Promise.all([
+  const [briefSystem, designSystem] = await measure("bootstrap", () => Promise.all([
     readPromptFile("Brief理解.md"),
     readPromptFile("设计判断.md"),
-    readPromptFile("prompt生成.md"),
   ]));
   const activePreset = presetForRequest(request);
   const knowledge = productionKnowledgeForRequest(request, activePreset);
@@ -5092,9 +5549,13 @@ async function runPipeline(request, onStage = () => {}) {
   const threeDPersonEnabled = THREE_D_PERSON_PERSPECTIVE_CONSTRAINT.enabled
     && activePreset?.preset_id === THREE_D_PRESET_ID
     && hasPersonIntent(request);
+  const realPersonEnabled = activePreset?.preset_id === REAL_PERSON_PRESET.preset_id;
   const doudouEnabled = isDoudouEnabled(request);
   const threeDPersonDesignInstruction = threeDPersonEnabled
     ? `本次为3D风格且主视觉主体涉及人物，设计判断必须执行：${threeDPersonPerspectiveBlock(threeDPersonPerspectiveDecision(request))}`
+    : "";
+  const realPersonDesignInstruction = realPersonEnabled
+    ? "本次为真实人物预设：人物必须是第一视觉中心，保持真实人体比例、完整肢体、稳定身份、五官结构、发型和主要服装；如存在用户上传主体图，该上传图是人物身份和外观的最高优先级事实来源。风格参考只用于摄影方式、光影、色彩、材质与商业完成度，不得把风格图中的人物身份、脸部、发型或服装带入结果。"
     : "";
   const doudouDesignInstruction = doudouEnabled
     ? `${doudouRolePrompt(request)} 兜兜没有手、手掌、手臂、胳膊或嘴巴，只能通过袋身、眼睛、腿脚、提手、身体倾斜和道具关系表现动作与情绪。`
@@ -5118,12 +5579,13 @@ async function runPipeline(request, onStage = () => {}) {
         hasMainTitle(request) ? "用户提供了主标题，必须原样保留。整合版式参考同时控制文字视觉系统、信息比例、对齐关系和主画面区域；不得继承参考图文字颜色，主标题颜色根据本次整体视觉方向、背景对比和可读性重新确定。" : "主标题为空，必须删除整合版式参考中的主标题槽位，不得补写主标题。",
         campaignSubtitleText(request) ? `副标题「${campaignSubtitleText(request)}」必须准确保留，层级低于主标题。` : "不得补写副标题。",
         campaignTimeText(request) ? `活动时间「${campaignTimeText(request)}」必须准确保留，并属于标题组。` : "不得补写活动时间。",
-        `整合版式参考是文字视觉系统与KV区域布局的最高优先级共同依据：主标题、副标题和活动时间替换为用户提供内容，但字形气质、字号比例、位置、对齐轴、行数、间距、组合轮廓和装饰关系必须严格继承参考图。${INTEGRATED_LAYOUT_DECORATION_RULE}。标题长度变化时按参考描述的适配规则保持视觉中心，不得默认左对齐。参考图白色/空白区域是主视觉生成区域，不是最终白色背景。`,
+        `整合版式参考是文字视觉系统与KV区域布局的最高优先级共同依据：主标题、副标题和活动时间只替换为用户明确提供的内容，字形气质、字号比例、位置、对齐轴、行数、间距、组合轮廓和非文字装饰关系严格继承参考图。${INTEGRATED_LAYOUT_DECORATION_RULE}。${integratedLayoutDecorativeCopyContext(request)}。设计大纲不得根据主题创作任何额外文案。标题长度变化时按参考描述的适配规则保持视觉中心，不得默认左对齐。参考图白色/空白区域是主视觉生成区域，不是最终白色背景。`,
         uploadedReferences.some((item) => item.role === "主体")
           ? "用户上传主体图已随本请求提供给你直接观察。它是对象身份的唯一事实来源：必须识别并保留图中的真实对象类别、轮廓结构、部件、包装比例、材质和可见识别特征；不得根据活动主题猜测或替换成任何其他对象。场景与风格只能包围和衬托该原始对象。"
           : "",
         hasMainTitle(request) && (campaignSubtitleText(request) || campaignTimeText(request)) ? "副标题和活动时间的文字颜色必须与主标题完全一致。" : "",
         threeDPersonDesignInstruction,
+        realPersonDesignInstruction,
         doudouDesignInstruction,
         petEnabled ? "本次包含宠物，必须遵守当前预设中的宠物角色约束。" : "",
         y3kEnabled ? "本次为Y3K预设，人物与穿搭编辑逻辑按预设执行。" : "",
@@ -5173,68 +5635,22 @@ async function runPipeline(request, onStage = () => {}) {
   onStage("preflight", { preflight_review: preflightReview });
   onStage("materials", { selected_materials: promptReferences });
 
-  onStage("status", { message: "正在生成结构化 Prompt 草稿..." });
-  const promptDraft = buildFinalPrompt(request, design, promptReferences);
-  let finalPrompt = normalizePromptSections(cleanPromptForVisibleInputs(promptDraft));
-  if (ENABLE_PROMPT_LLM) {
-    try {
-      onStage("status", { message: "正在用 LLM 优化最终 Prompt..." });
-      const promptVisibleRequest = {
-      campaign_name: request.campaign_name,
-      campaign_subtitle: request.campaign_subtitle,
-      campaign_time: request.campaign_time,
-      visual_description: request.visual_description,
-      image_size: request.image_size,
-      uploaded_reference_usage: request.user_reference_usage,
-      doudou_ip: request.doudou_ip,
-      ...(request.include_logo ? { include_logo: true } : {}),
-      ...(request.include_search_overlay ? { include_search_overlay: true } : {}),
-      };
-      const optimizedPrompt = await measure("prompt_optimization", () => callResponses({
-      system: promptSystem,
-      user: [
-        `请只优化结构化草稿中已经存在的章节，不得创建草稿中不存在的章节，不得为填满结构而补写视觉方向、色彩、角色、主体或辅助元素。${hasMainTitle(request) ? "用户已填写主标题，必须原样保留；整合版式参考控制全部文字角色的字形气质、字号比例、位置、对齐、行数、间距、组合轮廓和装饰关系，其样式优先级高于文字内容，但不得继承其文字颜色。" : "主标题为空：删除事实性主标题内容，不得补写业务主标题。"}${campaignSubtitleText(request) ? `用户已填写副标题「${campaignSubtitleText(request)}」，必须准确保留并严格继承参考图副标题的比例、位置和对齐关系。` : "不得补写事实性业务副标题。"}${campaignTimeText(request) ? `用户已填写活动时间「${campaignTimeText(request)}」，必须准确保留并严格继承参考图时间模块的比例、位置和对齐关系。` : "不得补写事实性日期。"}${hasMainTitle(request) && (campaignSubtitleText(request) || campaignTimeText(request)) ? "副标题和活动时间与主标题使用同一颜色系统。" : ""}${INTEGRATED_LAYOUT_DECORATION_RULE}。根据参考图真实版式和标题长度决定左对齐、居中、右对齐或自由组合，不得默认左对齐。参考图中的白色/空白区域表示主视觉生成区域，不是最终白底。一、参考图说明必须原样保留，不得加入描述文件原文。`,
-        "必须忠实执行已选创意方案和美术总监修正，不得把构图退化为普通居中陈列或随机元素堆叠。",
-        uploadedReferences.some((item) => item.role === "主体")
-          ? "用户已用@图片明确指定主视觉主体。上传图中的原始对象身份不可替换：不得把它改写为任何其他对象；只能调整其背景、承载台、摆放角度、构图与光影。"
-          : "",
-        petEnabled ? "本次包含宠物角色，最终 Prompt 必须保留宠物角色造型约束，并把negative prompt合并进九、禁止项。" : "",
-        doudouEnabled ? "本次用户选择了兜兜IP，必须保留兜兜IP角色约束和兜兜参考图用途，不得遗漏兜兜或给兜兜添加手臂、手、嘴巴。" : "",
-        `可写入最终 Prompt 的用户输入：${JSON.stringify(promptVisibleRequest, null, 2)}`,
-        `选定创意蓝图：${JSON.stringify(creativePlan.selected_blueprint, null, 2)}`,
-        `美术总监生成前评审：${JSON.stringify(preflightReview, null, 2)}`,
-        `统一视觉预设：${activePreset ? JSON.stringify({ preset_id: activePreset.preset_id, preset_name: activePreset.preset_name, style_group: activePreset.style_group, shared_principles: knowledge.preset_principles?.summary || "" }, null, 2) : "未使用"}`,
-        `设计判断：${JSON.stringify(design, null, 2)}`,
-        `参考图及用途：${JSON.stringify(promptReferences.map((item) => ({ number: item.number, role: item.role, reason: item.reason })), null, 2)}`,
-        `结构化草稿：\n${promptDraft}`,
-      ].filter(Boolean).join("\n\n"),
-      expectJson: false,
-      }));
-      let cleanedPrompt = restrictPromptToDraftSections(normalizePromptSections(cleanPromptForVisibleInputs(optimizedPrompt)), promptDraft);
-      cleanedPrompt = preserveDraftSection(cleanedPrompt, promptDraft, "一、参考图说明");
-      cleanedPrompt = preserveDraftSection(cleanedPrompt, promptDraft, "六、标题文字与信息层级");
-      cleanedPrompt = preserveDraftSection(cleanedPrompt, promptDraft, "九、禁止项");
-      if (!promptSectionsAreValid(cleanedPrompt)) throw new Error("LLM Prompt 章节结构不合规");
-      finalPrompt = cleanedPrompt;
-    } catch (error) {
-      fallback = true;
-      warnings.push({ stage: "prompt", message: error.message });
-      finalPrompt = normalizePromptSections(cleanPromptForVisibleInputs(promptDraft));
-      onStage("status", { message: `最终 Prompt 已使用结构化草稿继续生成：${error.message}` });
-    }
-  } else {
-    stageTimings.prompt_local = 0;
-  }
-  finalPrompt = enforceFontReferenceConstraint(finalPrompt, promptReferences);
-  finalPrompt = enforceIntegratedLayoutConstraint(finalPrompt, request, promptReferences);
-  finalPrompt = enforceUploadedSubjectConstraint(finalPrompt, request, promptReferences);
+  onStage("status", { message: "正在生成精简的分层执行 Prompt..." });
+  let finalPrompt = buildCompactExecutionPrompt(request, design, promptReferences);
+  stageTimings.prompt_local = 0;
   onStage("prompt", { final_prompt: finalPrompt });
 
   const imageIterations = [];
-  onStage("status", { message: request.generate_image ? "正在调用 gpt-image-2 生成 KV 图..." : "未勾选生成最终 KV 图。" });
-  let imageResult = request.generate_image
-    ? await measure("image_generation", () => generateImage(request, finalPrompt, promptReferences))
-    : { skipped: true, reason: "未勾选生成最终 KV 图。" };
+  onStage("status", { message: request.generate_image ? "正在启动分层生图..." : "未勾选生成最终 KV 图。" });
+  let generationResult = request.generate_image
+    ? await measure("image_generation", () => generateLayeredImage(request, design, promptReferences, onStage))
+    : {
+        image: { skipped: true, reason: "未勾选生成最终 KV 图。" },
+        prompt: finalPrompt,
+        mode: "skipped",
+      };
+  let imageResult = generationResult.image;
+  finalPrompt = generationResult.prompt || finalPrompt;
   onStage("image", { image_result: imageResult });
 
   let qualityReview = localImageQualityReview(imageResult?.reason || "");
@@ -5265,10 +5681,15 @@ async function runPipeline(request, onStage = () => {}) {
       const correction = textOf(qualityReview.correction_prompt).trim()
         || qualityReview.corrections?.join("；")
         || qualityReview.blocking_issues.join("；");
-      finalPrompt = `${finalPrompt}\n\n【美术总监返修指令】\n只修正以下生产阻断问题，其余已正确的主体、创意概念、构图关系、参考图用途和文字内容保持不变：${correction}`;
+      finalPrompt = buildCompactExecutionPrompt(request, design, promptReferences, correction);
       onStage("prompt", { final_prompt: finalPrompt, revision: retryCount });
       onStage("status", { message: `检测到硬性问题，正在进行第 ${retryCount} 次定向返修...` });
-      imageResult = await measure("image_retry", () => generateImage(request, finalPrompt, promptReferences));
+      generationResult = await measure(
+        "image_retry",
+        () => generateLayeredImage(request, design, promptReferences, onStage, correction),
+      );
+      imageResult = generationResult.image;
+      finalPrompt = generationResult.prompt || finalPrompt;
       onStage("image", { image_result: imageResult, revision: retryCount });
       qualityReview = await measure("post_image_review", () => reviewGeneratedImage(imageResult, request, creativePlan, design, promptReferences, knowledge));
       imageIterations.push({ iteration: retryCount + 1, image_result: imageResult, quality_review: qualityReview });
@@ -5318,7 +5739,7 @@ async function runPipeline(request, onStage = () => {}) {
         reference_rerank: ENABLE_REFERENCE_LLM_RERANK ? "llm" : "semantic-contextual",
         design: ENABLE_DESIGN_LLM ? "llm" : "local",
         preflight: ENABLE_PREFLIGHT_LLM ? "llm" : "local",
-        prompt: ENABLE_PROMPT_LLM ? "llm" : "local",
+        prompt: "compact-layered-local",
         post_image_review: ENABLE_POST_IMAGE_REVIEW ? "llm" : "deferred",
         auto_image_retry: AUTO_ART_DIRECTOR_RETRY,
       },
@@ -5341,6 +5762,7 @@ function validateRequest(body) {
     visual_description: textOf(body.visual_description).trim(),
     image_size: body.image_size,
     style_preset: stylePreset,
+    integrated_layout_variant: textOf(body.integrated_layout_variant).trim(),
     generate_image: body.generate_image === true || body.generate_image === "true" || body.generate_image === "on" || body.generate_image === "1",
     uploaded_references: Array.isArray(body.uploaded_references) ? body.uploaded_references.filter(Boolean) : [],
     reference_labels: Array.isArray(body.reference_labels) ? body.reference_labels : [],
@@ -5428,7 +5850,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/style-presets") {
-      jsonResponse(res, 200, { presets: allStylePresetCards(), custom_presets: loadCustomStylePresets() });
+      jsonResponse(res, 200, { presets: stylePresetCardsWithIntegratedLayouts(), custom_presets: loadCustomStylePresets() });
       return;
     }
 
