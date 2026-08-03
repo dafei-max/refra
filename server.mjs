@@ -9,6 +9,8 @@ import { getInspirationImage, ImageProxyError } from "./services/inspiration/ima
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const BRIEF_PROMPT_URL = new URL("./Brief理解.md", import.meta.url);
+const DESIGN_PROMPT_URL = new URL("./设计判断.md", import.meta.url);
 
 const PORT = Number(process.env.PORT || 5173);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -2453,10 +2455,6 @@ function applyLogoOverlay(filePath, request = {}) {
       });
     });
   });
-}
-
-async function readPromptFile(name) {
-  return readFile(path.join(__dirname, name), "utf-8");
 }
 
 function parseResponseText(payload) {
@@ -5487,8 +5485,8 @@ async function runPipeline(request, onStage = () => {}) {
     }
   };
   const [briefSystem, designSystem] = await measure("bootstrap", () => Promise.all([
-    readPromptFile("Brief理解.md"),
-    readPromptFile("设计判断.md"),
+    readFile(BRIEF_PROMPT_URL, "utf-8"),
+    readFile(DESIGN_PROMPT_URL, "utf-8"),
   ]));
   const activePreset = presetForRequest(request);
   const knowledge = productionKnowledgeForRequest(request, activePreset);
