@@ -1,15 +1,22 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "experimentalServices": {
+  "services": {
     "web": {
+      "root": ".",
       "entrypoint": "server.mjs",
-      "routePrefix": "/",
-      "includeFiles": [
-        "Brief理解.md",
-        "设计判断.md",
-        "检索匹配.md",
-        "prompt生成.md"
-      ]
+      "functions": {
+        "server.mjs": {
+          "includeFiles": "{Brief理解.md,设计判断.md,检索匹配.md,prompt生成.md}"
+        }
+      }
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "web"
+      }
+    }
+  ]
 }
