@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile, mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { searchDesignInspiration } from "./services/inspiration/index.mjs";
@@ -44,10 +45,18 @@ const STYLE_DIR = path.join(__dirname, "style");
 const DOUDOU_DIR = path.join(__dirname, "兜兜");
 const CREATIVE_METHODS_DIR = path.join(__dirname, "creative_methods");
 const DESIGN_CASES_DIR = path.join(__dirname, "case");
-const OUTPUT_DIR = path.join(__dirname, "outputs");
-const UPLOAD_DIR = path.join(__dirname, "uploads", "materials");
-const REFERENCE_UPLOAD_DIR = path.join(__dirname, "uploads", "references");
-const STYLE_UPLOAD_DIR = path.join(__dirname, "uploads", "styles");
+const IS_VERCEL =
+  process.env.VERCEL === "1" ||
+  Boolean(process.env.VERCEL_URL) ||
+  __dirname === "/var/task" ||
+  __dirname.startsWith("/var/task/");
+const RUNTIME_ROOT = IS_VERCEL ? path.join(tmpdir(), "refra") : __dirname;
+const PACKAGED_UPLOAD_ROOT = path.join(__dirname, "uploads");
+const UPLOAD_ROOT = path.join(RUNTIME_ROOT, "uploads");
+const OUTPUT_DIR = path.join(RUNTIME_ROOT, "outputs");
+const UPLOAD_DIR = path.join(UPLOAD_ROOT, "materials");
+const REFERENCE_UPLOAD_DIR = path.join(UPLOAD_ROOT, "references");
+const STYLE_UPLOAD_DIR = path.join(UPLOAD_ROOT, "styles");
 const LOGO_DARK_BG_PATH = path.join(IMAGE_DIR, "Group.png");
 const LOGO_LIGHT_BG_PATH = path.join(IMAGE_DIR, "Group 2147242265.png");
 const LOGO_WIDTH = 200;
@@ -58,8 +67,14 @@ const SEARCH_DARK_BG_PATH = path.join(IMAGE_DIR, "search_dark.png");
 const SEARCH_WIDTH = 295;
 const SEARCH_RIGHT = 44;
 const SEARCH_BOTTOM = 22;
-const MATERIALS_PATH = path.join(__dirname, "data", "materials.json");
-const CUSTOM_STYLES_PATH = path.join(__dirname, "data", "style-presets.json");
+const PACKAGED_MATERIALS_PATH = path.join(__dirname, "data", "materials.json");
+const MATERIALS_PATH = IS_VERCEL
+  ? path.join(RUNTIME_ROOT, "data", "materials.json")
+  : PACKAGED_MATERIALS_PATH;
+const PACKAGED_CUSTOM_STYLES_PATH = path.join(__dirname, "data", "style-presets.json");
+const CUSTOM_STYLES_PATH = IS_VERCEL
+  ? path.join(RUNTIME_ROOT, "data", "style-presets.json")
+  : PACKAGED_CUSTOM_STYLES_PATH;
 const PYTHON_BIN = process.env.PYTHON_BIN || "/Users/bytedance/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3";
 const AUTO_ART_DIRECTOR_RETRY = modeFlag("AUTO_ART_DIRECTOR_RETRY");
 const ART_DIRECTOR_RETRY_LIMIT = 1;
@@ -1071,9 +1086,12 @@ function presetReferenceGroups(preset) {
 }
 
 function loadCustomStylePresets() {
-  if (!existsSync(CUSTOM_STYLES_PATH)) return [];
+  const sourcePath = existsSync(CUSTOM_STYLES_PATH)
+    ? CUSTOM_STYLES_PATH
+    : PACKAGED_CUSTOM_STYLES_PATH;
+  if (!existsSync(sourcePath)) return [];
   try {
-    const payload = JSON.parse(readFileSync(CUSTOM_STYLES_PATH, "utf-8"));
+    const payload = JSON.parse(readFileSync(sourcePath, "utf-8"));
     return (payload.presets || []).map(normalizeCustomStylePreset).filter((item) => item.preset_id && item.preset_name);
   } catch {
     return [];
@@ -1988,7 +2006,8 @@ function normalizeMaterial(raw, index = 0) {
 }
 
 async function loadMaterials() {
-  const payload = JSON.parse(await readFile(MATERIALS_PATH, "utf-8"));
+  const sourcePath = existsSync(MATERIALS_PATH) ? MATERIALS_PATH : PACKAGED_MATERIALS_PATH;
+  const payload = JSON.parse(await readFile(sourcePath, "utf-8"));
   return (payload.materials || []).map(normalizeMaterial).filter((item) => item.number && item.type);
 }
 
@@ -2051,7 +2070,17 @@ function materialImagePath(image) {
   if (image.startsWith("/style/")) return { file: path.join(STYLE_DIR, decodeURIComponent(image.replace("/style/", ""))), base: STYLE_DIR };
   if (image.startsWith("/sytle/")) return { file: path.join(STYLE_DIR, decodeURIComponent(image.replace("/sytle/", ""))), base: STYLE_DIR };
   if (image.startsWith("/style/")) return { file: path.join(STYLE_DIR, decodeURIComponent(image.replace("/style/", ""))), base: STYLE_DIR };
-  if (image.startsWith("/uploads/")) return { file: path.join(__dirname, decodeURIComponent(image.replace(/^\//, ""))), base: path.join(__dirname, "uploads") };
+  if (image.startsWith("/uploads/")) {
+    const relative = decodeURIComponent(image.replace("/uploads/", ""));
+    const runtimeFile = path.join(UPLOAD_ROOT, relative);
+    if (existsSync(runtimeFile) || !IS_VERCEL) {
+      return { file: runtimeFile, base: UPLOAD_ROOT };
+    }
+    return {
+      file: path.join(PACKAGED_UPLOAD_ROOT, relative),
+      base: PACKAGED_UPLOAD_ROOT,
+    };
+  }
   if (image.startsWith("/outputs/")) return { file: path.join(OUTPUT_DIR, decodeURIComponent(image.replace("/outputs/", ""))), base: OUTPUT_DIR };
   return null;
 }
@@ -2063,6 +2092,7 @@ async function deleteUploadedMaterialImage(material) {
   if (!local) return false;
   const file = path.resolve(local.file);
   const base = path.resolve(local.base);
+  if (IS_VERCEL && base === path.resolve(PACKAGED_UPLOAD_ROOT)) return false;
   if (!file.startsWith(`${base}${path.sep}`) || !existsSync(file)) return false;
   await unlink(file);
   return true;
@@ -4947,7 +4977,10 @@ async function fetchImageBytes(selected) {
         "主体": "subject",
       }[role] || (item.source === "兜兜IP" ? "doudou" : "reference");
       const sequence = String(index + 1).padStart(2, "0");
-      const local = materialImagePath(item.local_image || item.image || "");
+      const localImage = textOf(item.local_image || item.image || "").trim();
+      const local = path.isAbsolute(localImage)
+        ? { file: localImage, base: path.dirname(localImage) }
+        : materialImagePath(localImage);
       if (local && existsSync(local.file)) {
         const extension = path.extname(local.file) || ".png";
         return {
@@ -4987,7 +5020,7 @@ function imageEditSizeForFile(filePath, fallback = "1024x1024") {
   return size?.width && size?.height ? `${size.width}x${size.height}` : fallback;
 }
 
-function outputReference(url, number, description) {
+function outputReference(url, number, description, localImage = url) {
   return {
     type: "生成资产",
     source: "生成资产",
@@ -4997,7 +5030,7 @@ function outputReference(url, number, description) {
     Reference: description,
     reason: description,
     image: url,
-    local_image: url,
+    local_image: localImage,
     image_url: "",
     description,
   };
@@ -5308,6 +5341,7 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
     typography.url,
     "STAGE1_FIXED_LAYOUT",
     "第一步生成的固定信息层参考；文字与已有装饰必须原样保留，空白底色不固定，主体与场景可以在信息层下方连续铺展。",
+    typography.output_path,
   );
   const sceneSelected = sceneReferences(selected).slice(0, 9);
   const finalSelected = [stageOneReference, ...sceneSelected];
@@ -5438,7 +5472,12 @@ async function splitAssetLayers({ name, title, subtitle, time }) {
   if (!source) throw new Error("未找到该生成资产");
   if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
 
-  const sourceRef = outputReference(source.url, "SOURCE_KV", "待拆分的完整 KV 图，用于提取标题文字层和干净背景层。");
+  const sourceRef = outputReference(
+    source.url,
+    "SOURCE_KV",
+    "待拆分的完整 KV 图，用于提取标题文字层和干净背景层。",
+    source.filePath,
+  );
   const size = imageEditSizeForFile(source.filePath, "1024x1024");
   const titlePrompt = buildTitleExtractionPrompt({ title, subtitle, time });
   const backgroundPrompt = buildBackgroundExtractionPrompt({ title, subtitle, time });
@@ -6070,7 +6109,13 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/uploads/")) {
-      await serveStatic(res, path.join(__dirname, decodeURIComponent(url.pathname.replace(/^\//, ""))), path.join(__dirname, "uploads"));
+      const relative = decodeURIComponent(url.pathname.replace("/uploads/", ""));
+      const runtimeFile = path.join(UPLOAD_ROOT, relative);
+      if (existsSync(runtimeFile)) {
+        await serveStatic(res, runtimeFile, UPLOAD_ROOT);
+      } else {
+        await serveStatic(res, path.join(PACKAGED_UPLOAD_ROOT, relative), PACKAGED_UPLOAD_ROOT);
+      }
       return;
     }
 
