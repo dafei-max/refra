@@ -36,7 +36,7 @@ const MAGIC_SIGNATURES = [
   { mime: "image/gif", match: (bytes) => bytes.length >= 4 && bytes.subarray(0, 4).toString("latin1") === "GIF8" },
 ];
 
-function detectImageType(bytes) {
+export function detectImageType(bytes) {
   return MAGIC_SIGNATURES.find(({ match }) => match(bytes))?.mime || "";
 }
 
@@ -329,7 +329,6 @@ export async function resolveImageBytes(source, options = {}) {
 export const __testing = {
   buildDeploymentUrl,
   decodePathSegments,
-  detectImageType,
   isWithin,
   normalizeMime,
   splitPrefix,

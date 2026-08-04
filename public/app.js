@@ -2,6 +2,39 @@ const form = document.querySelector("#briefForm");
 const runButton = document.querySelector("#runButton");
 const errorBox = document.querySelector("#errorBox");
 const resultView = document.querySelector("#resultView");
+const adminTokenInput = document.querySelector("#adminTokenInput");
+const ADMIN_TOKEN_KEY = "refra_admin_token";
+
+function adminToken() {
+  return (localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim();
+}
+
+function authHeaders(extra = {}) {
+  const headers = { ...(extra || {}) };
+  const token = adminToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+async function apiFetch(url, options = {}) {
+  const response = await fetch(url, { ...options, headers: authHeaders(options.headers) });
+  if (response.status === 401 && !options.__authRetried) {
+    const token = window.prompt("此操作需要管理令牌（ADMIN_TOKEN），请输入：");
+    if (token && token.trim()) {
+      localStorage.setItem(ADMIN_TOKEN_KEY, token.trim());
+      if (adminTokenInput) adminTokenInput.value = token.trim();
+      return apiFetch(url, { ...options, __authRetried: true });
+    }
+  }
+  return response;
+}
+
+if (adminTokenInput) {
+  adminTokenInput.value = adminToken();
+  adminTokenInput.addEventListener("input", () => {
+    localStorage.setItem(ADMIN_TOKEN_KEY, adminTokenInput.value.trim());
+  });
+}
 const assetsButton = document.querySelector("#assetsButton");
 const styleButton = document.querySelector("#styleButton");
 const libraryButton = document.querySelector("#libraryButton");
@@ -776,7 +809,7 @@ function applyStage(event, payload) {
 }
 
 async function runStream(data) {
-  const response = await fetch("/api/run-stream", { method: "POST", body: data });
+  const response = await apiFetch("/api/run-stream", { method: "POST", body: data });
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || "链路运行失败");
@@ -826,7 +859,7 @@ async function expandDescription() {
       include_logo: isToolToggleEnabled(includeLogoButton),
       include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
     };
-    const response = await fetch("/api/expand-description", {
+    const response = await apiFetch("/api/expand-description", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -871,6 +904,7 @@ function saveAssetRecord(result) {
   const record = {
     name,
     url: image.url,
+    object_key: image.object_key || "",
     title: result.request?.campaign_name || campaignNameInput.value.trim(),
     subtitle: result.request?.campaign_subtitle || campaignSubtitleInput.value.trim(),
     time: result.request?.campaign_time || campaignTimeInput.value.trim(),
@@ -890,10 +924,10 @@ function saveAssetRecord(result) {
 }
 
 async function deleteAsset(name) {
-  const response = await fetch(`/api/assets/${encodeURIComponent(name)}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/assets/${encodeURIComponent(name)}`, { method: "DELETE" });
   const payload = await response.json().catch(() => ({}));
   if (response.ok) return payload;
-  const fallback = await fetch("/api/assets/delete", {
+  const fallback = await apiFetch("/api/assets/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -904,7 +938,7 @@ async function deleteAsset(name) {
 }
 
 async function splitAsset(item) {
-  const response = await fetch("/api/assets/split", {
+  const response = await apiFetch("/api/assets/split", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -945,7 +979,7 @@ function renderAssets(items) {
   const records = readAssetRecords();
   const merged = items.map((asset) => {
     const record = records.find((item) => item.name === asset.name || item.url === asset.url) || {};
-    return { ...asset, ...record, url: asset.url || record.url };
+    return { ...record, ...asset, url: asset.url || record.url };
   });
   const known = new Set(merged.map((item) => item.name || item.url));
   records.forEach((record) => {
@@ -1129,7 +1163,7 @@ async function importStyleFolder(files) {
   body.append("thumbnail", styleImage);
   sortedImages.forEach((file, index) => body.append(`reference_image_${index}`, file));
   try {
-    const response = await fetch("/api/style-presets/add", { method: "POST", body });
+    const response = await apiFetch("/api/style-presets/add", { method: "POST", body });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "保存失败");
     allStylePresets = payload.style_presets || [];
@@ -1294,7 +1328,7 @@ async function searchInspiration(keyword) {
   renderInspirationSkeleton(normalizedKeyword);
 
   try {
-    const response = await fetch("/api/search", {
+    const response = await apiFetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ keyword: normalizedKeyword, limit: 40 }),
@@ -1393,7 +1427,7 @@ async function saveActiveInspiration() {
   inspirationSaveMessage.classList.remove("success");
   try {
     const item = activeInspiration;
-    const response = await fetch("/api/materials/save-inspiration", {
+    const response = await apiFetch("/api/materials/save-inspiration", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1475,10 +1509,10 @@ async function loadLibrary() {
 }
 
 async function deleteMaterial(number) {
-  const response = await fetch(`/api/materials/${encodeURIComponent(number)}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/materials/${encodeURIComponent(number)}`, { method: "DELETE" });
   const payload = await response.json().catch(() => ({}));
   if (response.ok) return payload;
-  const fallback = await fetch("/api/materials/delete", {
+  const fallback = await apiFetch("/api/materials/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ number }),

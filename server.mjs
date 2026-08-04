@@ -4,15 +4,28 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { searchDesignInspiration } from "./services/inspiration/index.mjs";
 import { getInspirationImage, ImageProxyError } from "./services/inspiration/image-proxy.mjs";
 import {
+  MAX_IMAGE_BYTES,
+  detectImageType,
   ImageSourceError,
   extensionForType,
   resolveImageBytes,
   resolveLocalSource,
 } from "./services/image-source-resolver.mjs";
+import {
+  StorageError,
+  initStorage,
+  storageBackend,
+  storageDelete,
+  storageExists,
+  storageGet,
+  storagePut,
+  storageSignUrl,
+} from "./services/storage-adapter.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,6 +73,21 @@ const RUNTIME_ROOT = IS_VERCEL ? path.join(tmpdir(), "refra") : __dirname;
 const PACKAGED_UPLOAD_ROOT = path.join(__dirname, "uploads");
 const UPLOAD_ROOT = path.join(RUNTIME_ROOT, "uploads");
 const OUTPUT_DIR = path.join(RUNTIME_ROOT, "outputs");
+const STORAGE = initStorage({ isVercel: IS_VERCEL, runtimeRoot: RUNTIME_ROOT });
+const IS_OSS = storageBackend() === "oss";
+const ADMIN_TOKEN = textOf(process.env.ADMIN_TOKEN).trim();
+const MAX_UPLOAD_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_UPLOAD_BYTES || 25 * 1024 * 1024));
+const MAX_JSON_BYTES = Math.max(64 * 1024, Number(process.env.MAX_JSON_BYTES || 2 * 1024 * 1024));
+const RATE_LIMIT_RUN_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_RUN_PER_MIN || 3));
+const RATE_LIMIT_EXPAND_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_EXPAND_PER_MIN || 10));
+const RATE_LIMIT_SEARCH_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_SEARCH_PER_MIN || 10));
+const RATE_LIMIT_WRITE_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_WRITE_PER_MIN || 20));
+if (IS_VERCEL && !ADMIN_TOKEN) {
+  throw new Error(
+    "ADMIN_TOKEN 未配置：请在 Vercel 环境变量中设置 ADMIN_TOKEN，用于保护生成与写接口；"
+    + "本地开发未设置时跳过鉴权。",
+  );
+}
 const UPLOAD_DIR = path.join(UPLOAD_ROOT, "materials");
 const REFERENCE_UPLOAD_DIR = path.join(UPLOAD_ROOT, "references");
 const STYLE_UPLOAD_DIR = path.join(UPLOAD_ROOT, "styles");
@@ -1091,7 +1119,23 @@ function presetReferenceGroups(preset) {
   return Array.isArray(preset?.reference_groups) ? preset.reference_groups : [];
 }
 
+let customStylePresetsCache = null;
+
+async function hydrateCustomStylePresets() {
+  if (IS_OSS) {
+    try {
+      const payload = JSON.parse((await storageGet("data/style-presets.json")).toString("utf-8"));
+      customStylePresetsCache = (payload.presets || []).map(normalizeCustomStylePreset).filter((item) => item.preset_id && item.preset_name);
+      return;
+    } catch (error) {
+      if (!(error instanceof StorageError)) throw error;
+    }
+  }
+  customStylePresetsCache = null;
+}
+
 function loadCustomStylePresets() {
+  if (customStylePresetsCache) return customStylePresetsCache;
   const sourcePath = existsSync(CUSTOM_STYLES_PATH)
     ? CUSTOM_STYLES_PATH
     : PACKAGED_CUSTOM_STYLES_PATH;
@@ -1105,13 +1149,15 @@ function loadCustomStylePresets() {
 }
 
 async function saveCustomStylePresets(presets) {
-  await mkdir(path.dirname(CUSTOM_STYLES_PATH), { recursive: true });
   const normalized = presets.map(normalizeCustomStylePreset).filter((item) => item.preset_id && item.preset_name);
-  await writeFile(
-    CUSTOM_STYLES_PATH,
-    JSON.stringify({ source: "dynamic-style-presets", count: normalized.length, presets: normalized }, null, 2),
-    "utf-8",
-  );
+  customStylePresetsCache = normalized;
+  const payload = JSON.stringify({ source: "dynamic-style-presets", count: normalized.length, presets: normalized }, null, 2);
+  if (IS_OSS) {
+    await storagePut("data/style-presets.json", Buffer.from(payload, "utf-8"), { contentType: "application/json" });
+    return normalized;
+  }
+  await mkdir(path.dirname(CUSTOM_STYLES_PATH), { recursive: true });
+  await writeFile(CUSTOM_STYLES_PATH, payload, "utf-8");
   return normalized;
 }
 
@@ -1223,6 +1269,106 @@ function sseWrite(res, event, payload) {
 
 function textOf(value) {
   return value == null ? "" : String(value);
+}
+
+function httpError(status, message) {
+  const error = new Error(message);
+  error.statusCode = status;
+  return error;
+}
+
+const ALLOWED_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+
+function validateImageFile(file) {
+  const bytes = Buffer.from(file?.data || []);
+  if (!bytes.length) throw httpError(400, "上传的图片内容为空");
+  if (bytes.length > MAX_IMAGE_BYTES) throw httpError(400, `图片超过大小限制 ${MAX_IMAGE_BYTES} 字节`);
+  if (!detectImageType(bytes)) throw httpError(400, "上传文件不是受支持的图片格式");
+  const extension = path.extname(textOf(file?.filename || "")).toLowerCase();
+  if (!ALLOWED_IMAGE_EXTENSIONS.has(extension)) throw httpError(400, `不支持的图片扩展名: ${extension || "(无)"}`);
+  return true;
+}
+
+function validateXlsxFile(file) {
+  const bytes = Buffer.from(file?.data || []);
+  if (!bytes.length) throw httpError(400, "上传的 Excel 内容为空");
+  if (bytes.length > MAX_UPLOAD_BYTES) throw httpError(400, `Excel 超过大小限制 ${MAX_UPLOAD_BYTES} 字节`);
+  const ext = path.extname(textOf(file?.filename || "")).toLowerCase();
+  if (ext !== ".xlsx" && ext !== ".xls") throw httpError(400, "仅支持 .xlsx / .xls 文件");
+  if (bytes.subarray(0, 4).toString("hex") !== "504b0304" && bytes.subarray(0, 8).toString("hex") !== "d0cf11e0a1b11ae1") {
+    throw httpError(400, "Excel 文件内容无效");
+  }
+  return true;
+}
+
+function isAuthorized(req) {
+  if (!ADMIN_TOKEN) return true;
+  const header = textOf(req.headers["authorization"] || req.headers["x-admin-token"]).trim();
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : header;
+  if (!token || token.length !== ADMIN_TOKEN.length) return false;
+  const left = Buffer.from(token);
+  const right = Buffer.from(ADMIN_TOKEN);
+  return crypto.timingSafeEqual(left, right);
+}
+
+function requireAdmin(req, res) {
+  if (isAuthorized(req)) return true;
+  jsonResponse(res, 401, { error: "需要有效的管理令牌（Authorization: Bearer <ADMIN_TOKEN>）" });
+  return false;
+}
+
+const rateBuckets = new Map();
+
+function applyRateLimit(req, res, limit, windowMs = 60000) {
+  if (!limit || limit <= 0) return true;
+  const ip = textOf(req.headers["x-forwarded-for"]).split(",")[0].trim()
+    || req.socket?.remoteAddress
+    || "local";
+  const now = Date.now();
+  const bucketKey = `${ip}|${req.url?.split("?")[0] || ""}`;
+  const bucket = rateBuckets.get(bucketKey);
+  if (!bucket || bucket.window < now - windowMs) {
+    rateBuckets.set(bucketKey, { window: now, count: 1 });
+  } else {
+    bucket.count += 1;
+    if (bucket.count > limit) {
+      res.writeHead(429, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Retry-After": String(Math.ceil((bucket.window + windowMs - now) / 1000)),
+      });
+      res.end(JSON.stringify({ error: "请求过于频繁，请稍后重试" }));
+      return false;
+    }
+  }
+  if (rateBuckets.size > 10000) {
+    for (const [key, value] of rateBuckets) {
+      if (value.window < now - 2 * windowMs) rateBuckets.delete(key);
+    }
+  }
+  return true;
+}
+
+function objectKeyFromUrl(value) {
+  const raw = textOf(value).trim();
+  if (!raw) return "";
+  return raw.startsWith("/") ? raw.slice(1) : raw;
+}
+
+function decorateUploadUrls(value) {
+  if (typeof value === "string") {
+    return value.startsWith("/uploads/") && IS_OSS ? storageSignUrl(value.slice(1)) : value;
+  }
+  if (Array.isArray(value)) return value.map(decorateUploadUrls);
+  if (value && typeof value === "object") {
+    const result = {};
+    for (const [key, item] of Object.entries(value)) result[key] = decorateUploadUrls(item);
+    return result;
+  }
+  return value;
+}
+
+function outputKey(name) {
+  return `outputs/${path.basename(String(name || ""))}`;
 }
 
 function presetByStyleId(styleId) {
@@ -1949,7 +2095,12 @@ function selectionReason(type, material, scores) {
 
 async function readJsonBody(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > MAX_JSON_BYTES) throw httpError(413, `JSON 请求体超过大小限制 ${MAX_JSON_BYTES} 字节`);
+    chunks.push(chunk);
+  }
   const raw = Buffer.concat(chunks).toString("utf-8");
   return raw ? JSON.parse(raw) : {};
 }
@@ -2012,61 +2163,239 @@ function normalizeMaterial(raw, index = 0) {
 }
 
 async function loadMaterials() {
+  if (IS_OSS) {
+    try {
+      const payload = JSON.parse((await storageGet("data/materials.json")).toString("utf-8"));
+      return (payload.materials || []).map(normalizeMaterial).filter((item) => item.number && item.type);
+    } catch (error) {
+      if (!(error instanceof StorageError)) throw error;
+      if (!existsSync(PACKAGED_MATERIALS_PATH)) return [];
+      const payload = JSON.parse(await readFile(PACKAGED_MATERIALS_PATH, "utf-8"));
+      const materials = (payload.materials || []).map(normalizeMaterial).filter((item) => item.number && item.type);
+      await saveMaterials(materials);
+      return materials;
+    }
+  }
   const sourcePath = existsSync(MATERIALS_PATH) ? MATERIALS_PATH : PACKAGED_MATERIALS_PATH;
   const payload = JSON.parse(await readFile(sourcePath, "utf-8"));
   return (payload.materials || []).map(normalizeMaterial).filter((item) => item.number && item.type);
 }
 
 async function saveMaterials(materials) {
-  await mkdir(path.dirname(MATERIALS_PATH), { recursive: true });
   const normalized = materials.map(normalizeMaterial).filter((item) => item.number && item.type);
-  await writeFile(
-    MATERIALS_PATH,
-    JSON.stringify({ source: "dynamic-material-library", count: normalized.length, materials: normalized }, null, 2),
-    "utf-8",
-  );
+  const payload = JSON.stringify({ source: "dynamic-material-library", count: normalized.length, materials: normalized }, null, 2);
+  if (IS_OSS) {
+    await storagePut("data/materials.json", Buffer.from(payload, "utf-8"), { contentType: "application/json" });
+    return normalized;
+  }
+  await mkdir(path.dirname(MATERIALS_PATH), { recursive: true });
+  await writeFile(MATERIALS_PATH, payload, "utf-8");
   return normalized;
 }
 
+const PACKAGED_ASSETS_PATH = path.join(__dirname, "data", "assets.json");
+
+async function loadAssetsIndex() {
+  try {
+    const payload = JSON.parse((await storageGet("data/assets.json")).toString("utf-8"));
+    return Array.isArray(payload?.assets) ? payload.assets : [];
+  } catch (error) {
+    if (!(error instanceof StorageError)) throw error;
+    if (!IS_OSS && existsSync(PACKAGED_ASSETS_PATH)) {
+      const payload = JSON.parse(await readFile(PACKAGED_ASSETS_PATH, "utf-8"));
+      return Array.isArray(payload?.assets) ? payload.assets : [];
+    }
+    return [];
+  }
+}
+
+async function saveAssetsIndex(assets) {
+  const payload = JSON.stringify({ source: "asset-index", count: assets.length, assets }, null, 2);
+  await storagePut("data/assets.json", Buffer.from(payload, "utf-8"), { contentType: "application/json" });
+  return assets;
+}
+
 async function listAssets() {
-  if (!existsSync(OUTPUT_DIR)) return [];
-  const names = await readdir(OUTPUT_DIR);
-  const assets = await Promise.all(
-    names
-      .filter((name) => /^kv-.*\.(png|jpe?g|webp)$/i.test(name))
-      .map(async (name) => {
-        const file = path.join(OUTPUT_DIR, name);
-        const info = await stat(file);
-        return {
-          name,
-          url: `/outputs/${name}`,
-          size: info.size,
-          created_at: info.birthtime.toISOString(),
-          modified_at: info.mtime.toISOString(),
-        };
-      }),
+  const index = await loadAssetsIndex();
+  const decorated = index.map(decorateAssetUrls);
+  if (!IS_OSS && existsSync(OUTPUT_DIR)) {
+    const names = (await readdir(OUTPUT_DIR)).filter((name) => /^kv-.*\.(png|jpe?g|webp)$/i.test(name));
+    const known = new Set(decorated.map((item) => item.name));
+    for (const name of names) {
+      if (known.has(name)) continue;
+      const file = path.join(OUTPUT_DIR, name);
+      const info = await stat(file).catch(() => null);
+      if (!info) continue;
+      decorated.push({
+        name,
+        object_key: outputKey(name),
+        url: `/outputs/${name}`,
+        size: info.size,
+        created_at: info.birthtime.toISOString(),
+        modified_at: info.mtime.toISOString(),
+        generation_mode: "legacy",
+      });
+    }
+  }
+  return decorated.sort(
+    (a, b) => new Date(b.modified_at || b.created_at || 0) - new Date(a.modified_at || a.created_at || 0),
   );
-  return assets.sort((a, b) => new Date(b.modified_at) - new Date(a.modified_at));
+}
+
+function decorateAssetUrls(asset = {}) {
+  const url = asset.object_key ? storageSignUrl(asset.object_key) : textOf(asset.url || "");
+  const layers = asset.layers
+    ? {
+        ...asset.layers,
+        typography: asset.layers.typography?.object_key
+          ? { ...asset.layers.typography, url: storageSignUrl(asset.layers.typography.object_key) }
+          : (asset.layers.typography || null),
+        scene: asset.layers.scene?.object_key
+          ? { ...asset.layers.scene, url: storageSignUrl(asset.layers.scene.object_key) }
+          : (asset.layers.scene || null),
+      }
+    : null;
+  const split = asset.split
+    ? {
+        ...asset.split,
+        title_layer: asset.split.title_layer?.object_key
+          ? {
+              ...asset.split.title_layer,
+              url: storageSignUrl(asset.split.title_layer.object_key),
+              transparent_url: asset.split.title_layer.transparent_object_key
+                ? storageSignUrl(asset.split.title_layer.transparent_object_key)
+                : "",
+            }
+          : (asset.split.title_layer || null),
+        background_layer: asset.split.background_layer?.object_key
+          ? { ...asset.split.background_layer, url: storageSignUrl(asset.split.background_layer.object_key) }
+          : (asset.split.background_layer || null),
+        split_package: asset.split.split_package?.object_key
+          ? { ...asset.split.split_package, url: storageSignUrl(asset.split.split_package.object_key) }
+          : (asset.split.split_package || null),
+      }
+    : null;
+  const references = (asset.references || [])
+    .map((ref) => {
+      const raw = textOf(ref).trim();
+      if (!raw) return "";
+      if (/^(https?:|data:|blob:)/.test(raw)) return raw;
+      if (raw.startsWith("/")) return IS_OSS ? "" : raw;
+      return storageSignUrl(raw) || raw;
+    })
+    .filter(Boolean);
+  return { ...asset, url, layers, split, references };
+}
+
+function collectAssetKeys(asset = {}) {
+  const keys = [];
+  if (asset.object_key) keys.push(asset.object_key);
+  for (const layer of [asset.layers?.typography, asset.layers?.scene]) {
+    if (layer?.object_key) keys.push(layer.object_key);
+  }
+  const split = asset.split || {};
+  if (split.title_layer?.object_key) keys.push(split.title_layer.object_key);
+  if (split.title_layer?.transparent_object_key) keys.push(split.title_layer.transparent_object_key);
+  if (split.background_layer?.object_key) keys.push(split.background_layer.object_key);
+  if (split.split_package?.object_key) keys.push(split.split_package.object_key);
+  return [...new Set(keys.filter(Boolean))];
+}
+
+async function persistAssetRecord(result) {
+  const image = result?.image_result;
+  const name = textOf(image?.name).trim();
+  if (!name || image?.skipped) return;
+  const assets = await loadAssetsIndex();
+  const existing = assets.find((item) => item.name === name);
+  const record = {
+    name,
+    object_key: image.object_key || outputKey(name),
+    title: textOf(result.request?.campaign_name).trim(),
+    subtitle: textOf(result.request?.campaign_subtitle).trim(),
+    time: textOf(result.request?.campaign_time).trim(),
+    description: textOf(result.request?.visual_description).trim(),
+    references: (result.request?.uploaded_references || []).map(objectKeyFromUrl).filter(Boolean),
+    creative_plan: result.creative_plan || null,
+    preflight_review: result.preflight_review || null,
+    quality_review: result.quality_review || null,
+    retrieval: result.retrieval || null,
+    generation_mode: image.generation_mode || "one-shot",
+    layers: image.layers?.typography?.object_key || image.layers?.scene?.object_key
+      ? {
+          typography: image.layers.typography?.object_key
+            ? { object_key: image.layers.typography.object_key }
+            : null,
+          scene: image.layers.scene?.object_key
+            ? { object_key: image.layers.scene.object_key }
+            : null,
+        }
+      : null,
+    split: existing?.split || null,
+    created_at: existing?.created_at || new Date().toISOString(),
+    modified_at: new Date().toISOString(),
+  };
+  const next = assets.filter((item) => item.name !== name);
+  next.push(record);
+  await saveAssetsIndex(next);
+}
+
+async function saveAssetSplitRecord(name, splitResult) {
+  const assets = await loadAssetsIndex();
+  const index = assets.findIndex((item) => item.name === name);
+  if (index < 0) return;
+  const split = {
+    title_layer: splitResult.title_layer?.object_key
+      ? { object_key: splitResult.title_layer.object_key, transparent_object_key: splitResult.title_layer.transparent_object_key || "" }
+      : null,
+    background_layer: splitResult.background_layer?.object_key
+      ? { object_key: splitResult.background_layer.object_key }
+      : null,
+    split_package: splitResult.split_package?.object_key
+      ? { object_key: splitResult.split_package.object_key }
+      : null,
+    created_at: new Date().toISOString(),
+  };
+  assets[index] = { ...assets[index], split, modified_at: new Date().toISOString() };
+  await saveAssetsIndex(assets);
 }
 
 async function deleteAssetByName(rawName) {
   const name = String(rawName || "").trim();
-  if (!name || name !== path.basename(name) || !/\.(png|jpe?g|webp)$/i.test(name)) return null;
-  const outputBase = path.resolve(OUTPUT_DIR);
-  const filePath = path.resolve(OUTPUT_DIR, name);
-  if (!filePath.startsWith(`${outputBase}${path.sep}`) || !existsSync(filePath)) return null;
-  await unlink(filePath);
-  const assets = await listAssets();
-  return { ok: true, deleted: name, count: assets.length, assets };
+  if (!name) return null;
+  const assets = await loadAssetsIndex();
+  const target = assets.find((item) => item.name === name);
+  if (target) {
+    for (const key of collectAssetKeys(target)) {
+      await storageDelete(key);
+    }
+    const next = assets.filter((item) => item.name !== name);
+    await saveAssetsIndex(next);
+    return { ok: true, deleted: name, count: next.length, assets: await listAssets() };
+  }
+  if (!IS_OSS && name === path.basename(name) && existsSync(path.join(OUTPUT_DIR, name))) {
+    await unlink(path.join(OUTPUT_DIR, name));
+    return { ok: true, deleted: name, count: assets.length, assets: await listAssets() };
+  }
+  return null;
 }
 
-function outputAssetPathByName(rawName) {
+async function outputAssetPathByName(rawName) {
   const name = String(rawName || "").trim();
-  if (!name || name !== path.basename(name) || !/\.(png|jpe?g|webp)$/i.test(name)) return null;
-  const outputBase = path.resolve(OUTPUT_DIR);
-  const filePath = path.resolve(OUTPUT_DIR, name);
-  if (!filePath.startsWith(`${outputBase}${path.sep}`) || !existsSync(filePath)) return null;
-  return { name, filePath, url: `/outputs/${name}` };
+  if (!name || name !== path.basename(name)) return null;
+  const assets = await loadAssetsIndex();
+  const record = assets.find((item) => item.name === name);
+  if (record?.object_key) {
+    return {
+      name,
+      objectKey: record.object_key,
+      url: storageSignUrl(record.object_key),
+      filePath: IS_OSS ? "" : path.join(OUTPUT_DIR, name),
+    };
+  }
+  if (!IS_OSS && existsSync(path.join(OUTPUT_DIR, name))) {
+    return { name, objectKey: outputKey(name), url: `/outputs/${name}`, filePath: path.join(OUTPUT_DIR, name) };
+  }
+  return null;
 }
 
 function imageSourceRoots() {
@@ -2104,6 +2433,12 @@ function materialImagePath(image) {
 async function deleteUploadedMaterialImage(material) {
   const image = textOf(material?.image).trim();
   if (!image.startsWith("/uploads/")) return false;
+  if (IS_OSS) {
+    await storageDelete(image.slice(1));
+    const local = materialImagePath(image);
+    if (local?.file && existsSync(local.file)) await unlink(local.file).catch(() => {});
+    return true;
+  }
   const local = materialImagePath(image);
   if (!local) return false;
   const file = path.resolve(local.file);
@@ -2136,7 +2471,14 @@ async function readMultipart(req) {
   if (!match) throw new Error("缺少 multipart boundary");
   const boundary = `--${match[1] || match[2]}`;
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let total = 0;
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > MAX_UPLOAD_BYTES) {
+      throw httpError(413, `上传内容超过大小限制 ${MAX_UPLOAD_BYTES} 字节`);
+    }
+    chunks.push(chunk);
+  }
   const buffer = Buffer.concat(chunks);
   const raw = buffer.toString("latin1");
   const parts = raw.split(boundary).slice(1, -1);
@@ -2166,9 +2508,17 @@ async function readMultipart(req) {
 }
 
 async function saveUploadedFile(file, preferredName) {
-  await mkdir(UPLOAD_DIR, { recursive: true });
+  validateImageFile(file);
   const ext = path.extname(file.filename || "") || ".png";
   const safeName = `${preferredName || "material"}-${Date.now()}${ext}`.replace(/[^\w.-]/g, "_");
+  const key = `uploads/materials/${safeName}`;
+  if (IS_OSS) {
+    await storagePut(key, file.data, { contentType: file.type || "image/png" });
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    await writeFile(path.join(UPLOAD_DIR, safeName), file.data);
+    return `/uploads/materials/${safeName}`;
+  }
+  await mkdir(UPLOAD_DIR, { recursive: true });
   const filePath = path.join(UPLOAD_DIR, safeName);
   await writeFile(filePath, file.data);
   return `/uploads/materials/${safeName}`;
@@ -2255,10 +2605,18 @@ async function saveInspirationMaterial(body) {
   }
 
   const image = await getInspirationImage(imageUrl);
-  await mkdir(UPLOAD_DIR, { recursive: true });
   const fileName = `${sourceConfig.prefix}_${sourceId}-${Date.now()}${extensionForImageType(image.contentType)}`;
-  const filePath = path.join(UPLOAD_DIR, fileName);
-  await writeFile(filePath, image.buffer);
+  const safeName = fileName.replace(/[^\w.-]/g, "_");
+  const key = `uploads/materials/${safeName}`;
+  if (IS_OSS) {
+    await storagePut(key, image.buffer, { contentType: image.contentType });
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    await writeFile(path.join(UPLOAD_DIR, safeName), image.buffer);
+  } else {
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    const filePath = path.join(UPLOAD_DIR, safeName);
+    await writeFile(filePath, image.buffer);
+  }
 
   const title = textOf(body.title).trim() || sourceConfig.fallbackTitle;
   const query = textOf(body.query).trim();
@@ -2269,7 +2627,7 @@ async function saveInspirationMaterial(body) {
     title,
     type: referenceRoles[0],
     reference_roles: referenceRoles,
-    image: `/uploads/materials/${fileName}`,
+    image: `/uploads/materials/${safeName}`,
     category: industryTags.join("、") || query,
     reference_description: description || [title, sourceAuthor ? `作者：${sourceAuthor}` : "", query ? `匹配主题：${query}` : ""].filter(Boolean).join("；"),
     design_type: textOf(body.designType || body.design_type).trim() || "视觉设计",
@@ -2295,20 +2653,36 @@ async function saveInspirationMaterial(body) {
 }
 
 async function saveUploadedReferenceFile(file, preferredName = "reference") {
-  await mkdir(REFERENCE_UPLOAD_DIR, { recursive: true });
+  validateImageFile(file);
   const ext = path.extname(file.filename || "") || ".png";
   const safeName = `${preferredName}-${Date.now()}${ext}`.replace(/[^\w.-]/g, "_");
+  const key = `uploads/references/${safeName}`;
+  if (IS_OSS) {
+    await storagePut(key, file.data, { contentType: file.type || "image/png" });
+    await mkdir(REFERENCE_UPLOAD_DIR, { recursive: true });
+    await writeFile(path.join(REFERENCE_UPLOAD_DIR, safeName), file.data);
+    return `/uploads/references/${safeName}`;
+  }
+  await mkdir(REFERENCE_UPLOAD_DIR, { recursive: true });
   const filePath = path.join(REFERENCE_UPLOAD_DIR, safeName);
   await writeFile(filePath, file.data);
   return `/uploads/references/${safeName}`;
 }
 
 async function saveStylePresetImage(file, presetId, preferredName = "style") {
+  validateImageFile(file);
   const styleId = safeSlug(presetId, "style");
   const dir = path.join(STYLE_UPLOAD_DIR, styleId);
-  await mkdir(dir, { recursive: true });
   const ext = path.extname(file.filename || "") || ".png";
   const safeName = `${preferredName}-${Date.now()}${ext}`.replace(/[^\w.-]/g, "_");
+  const key = `uploads/styles/${styleId}/${safeName}`;
+  if (IS_OSS) {
+    await storagePut(key, file.data, { contentType: file.type || "image/png" });
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, safeName), file.data);
+    return { file: safeName, url: `/uploads/styles/${styleId}/${safeName}` };
+  }
+  await mkdir(dir, { recursive: true });
   const filePath = path.join(dir, safeName);
   await writeFile(filePath, file.data);
   return { file: safeName, url: `/uploads/styles/${styleId}/${safeName}` };
@@ -4993,6 +5367,21 @@ async function fetchImageBytes(selected) {
         "主体": "subject",
       }[role] || (item.source === "兜兜IP" ? "doudou" : "reference");
       const sequence = String(index + 1).padStart(2, "0");
+      const objectKey = textOf(item.object_key || "").trim();
+      if (objectKey) {
+        try {
+          const bytes = await storageGet(objectKey);
+          const extension = path.extname(objectKey).toLowerCase();
+          return {
+            item,
+            bytes,
+            filename: `${sequence}-${roleSlug}-${safeSlug(item.number, "reference")}${extension || ".png"}`,
+            type: MIME[extension] || "image/png",
+          };
+        } catch (error) {
+          throw new Error(`素材 ${item.number} 图片读取失败（${objectKey}）：${error.message}`);
+        }
+      }
       const source = textOf(item.local_image || item.image_url || item.image || "").trim();
       try {
         const resolved = await resolveImageBytes(source, {
@@ -5006,6 +5395,20 @@ async function fetchImageBytes(selected) {
           type: resolved.type,
         };
       } catch (error) {
+        if (IS_OSS && source.startsWith("/uploads/") && error instanceof ImageSourceError) {
+          try {
+            const bytes = await storageGet(source.slice(1));
+            const extension = path.extname(source).toLowerCase();
+            return {
+              item,
+              bytes,
+              filename: `${sequence}-${roleSlug}-${safeSlug(item.number, "reference")}${extension || ".png"}`,
+              type: MIME[extension] || "image/png",
+            };
+          } catch (storageError) {
+            throw new Error(`素材 ${item.number} 图片读取失败：${storageError.message}`);
+          }
+        }
         if (error instanceof ImageSourceError) {
           throw new Error(`素材 ${item.number} 图片解析失败：${error.message}`);
         }
@@ -5030,7 +5433,7 @@ function imageEditSizeForFile(filePath, fallback = "1024x1024") {
   return size?.width && size?.height ? `${size.width}x${size.height}` : fallback;
 }
 
-function outputReference(url, number, description, localImage = url) {
+function outputReference(url, number, description, localImage = url, objectKey = "") {
   return {
     type: "生成资产",
     source: "生成资产",
@@ -5042,11 +5445,20 @@ function outputReference(url, number, description, localImage = url) {
     image: url,
     local_image: localImage,
     image_url: "",
+    object_key: objectKey,
     description,
   };
 }
 
-async function generateImageEditFile({ prompt, selected, size, prefix, applyOverlay = false, overlayRequest = {} }) {
+async function generateImageEditFile({
+  prompt,
+  selected,
+  size,
+  prefix,
+  applyOverlay = false,
+  overlayRequest = {},
+  keepTemp = false,
+}) {
   if (!OPENAI_API_KEY) {
     return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
   }
@@ -5079,8 +5491,31 @@ async function generateImageEditFile({ prompt, selected, size, prefix, applyOver
 
   const b64 = payload.data?.[0]?.b64_json;
   if (!b64) throw new Error("Images API 没有返回 b64_json");
-  await mkdir(OUTPUT_DIR, { recursive: true });
   const filename = `${prefix || "asset"}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.png`;
+  const key = outputKey(filename);
+  if (IS_OSS) {
+    const tempPath = path.join(RUNTIME_ROOT, "tmp", filename);
+    await mkdir(path.dirname(tempPath), { recursive: true });
+    await writeFile(tempPath, Buffer.from(b64, "base64"));
+    const brandOverlay = applyOverlay ? await applyLogoOverlay(tempPath, overlayRequest) : null;
+    const finalBytes = await readFile(tempPath);
+    await storagePut(key, finalBytes, { contentType: "image/png" });
+    if (!keepTemp) await unlink(tempPath).catch(() => {});
+    return {
+      skipped: false,
+      name: filename,
+      url: storageSignUrl(key),
+      object_key: key,
+      output_path: "",
+      temp_path: keepTemp ? tempPath : "",
+      size: size || "1024x1024",
+      prompt,
+      reference_images: selected.map((item) => item.number),
+      logo_overlay: brandOverlay?.logo_overlay || null,
+      search_overlay: brandOverlay?.search_overlay || null,
+    };
+  }
+  await mkdir(OUTPUT_DIR, { recursive: true });
   const outputPath = path.join(OUTPUT_DIR, filename);
   await writeFile(outputPath, Buffer.from(b64, "base64"));
   const brandOverlay = applyOverlay ? await applyLogoOverlay(outputPath, overlayRequest) : null;
@@ -5090,7 +5525,9 @@ async function generateImageEditFile({ prompt, selected, size, prefix, applyOver
     skipped: false,
     name: filename,
     url: `/outputs/${filename}`,
+    object_key: key,
     output_path: outputPath,
+    temp_path: "",
     size: size || "1024x1024",
     prompt,
     reference_images: selected.map((item) => item.number),
@@ -5136,6 +5573,7 @@ function publicImageLayer(result = {}) {
     transparent_path,
     raw_output_path,
     prompt,
+    temp_path,
     ...publicResult
   } = result;
   return publicResult;
@@ -5351,7 +5789,8 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
     typography.url,
     "STAGE1_FIXED_LAYOUT",
     "第一步生成的固定信息层参考；文字与已有装饰必须原样保留，空白底色不固定，主体与场景可以在信息层下方连续铺展。",
-    typography.output_path,
+    IS_OSS ? "" : typography.output_path,
+    typography.object_key || "",
   );
   const sceneSelected = sceneReferences(selected).slice(0, 9);
   const finalSelected = [stageOneReference, ...sceneSelected];
@@ -5363,6 +5802,8 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
     selected: finalSelected,
     size,
     prefix: "kv-two-stage",
+    applyOverlay: true,
+    overlayRequest: request,
   });
   if (finalImage.skipped) {
     return {
@@ -5374,15 +5815,15 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
   onStage("scene", { scene_layer: publicImageLayer(finalImage) });
 
   onStage("compose", { status: "running", message: "正在处理已勾选的品牌固定图层..." });
-  const overlay = await applyLogoOverlay(finalImage.output_path, request);
   const image = {
     skipped: false,
     name: finalImage.name,
     url: finalImage.url,
+    object_key: finalImage.object_key || "",
     size,
     reference_images: selected.map((item) => item.number),
-    logo_overlay: overlay?.logo_overlay || null,
-    search_overlay: overlay?.search_overlay || null,
+    logo_overlay: finalImage.logo_overlay || null,
+    search_overlay: finalImage.search_overlay || null,
     generation_mode: "two-stage-reference",
     layers: {
       typography: publicImageLayer(typography),
@@ -5454,7 +5895,7 @@ function buildBackgroundExtractionPrompt({ title, subtitle, time }) {
 
 async function writeSplitPackage({ source, title, subtitle, time, titleLayer, backgroundLayer }) {
   const filename = `split-package-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.json`;
-  const filePath = path.join(OUTPUT_DIR, filename);
+  const key = outputKey(filename);
   const payload = {
     type: "kv-ai-split-package",
     created_at: new Date().toISOString(),
@@ -5473,44 +5914,74 @@ async function writeSplitPackage({ source, title, subtitle, time, titleLayer, ba
       background_layer: backgroundLayer.prompt,
     },
   };
-  await writeFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
-  return { name: filename, url: `/outputs/${filename}` };
+  const bytes = Buffer.from(JSON.stringify(payload, null, 2), "utf-8");
+  if (IS_OSS) {
+    await storagePut(key, bytes, { contentType: "application/json" });
+    return { name: filename, url: storageSignUrl(key), object_key: key };
+  }
+  await mkdir(OUTPUT_DIR, { recursive: true });
+  await writeFile(path.join(OUTPUT_DIR, filename), bytes);
+  return { name: filename, url: `/outputs/${filename}`, object_key: key };
 }
 
 async function splitAssetLayers({ name, title, subtitle, time }) {
-  const source = outputAssetPathByName(name);
+  const source = await outputAssetPathByName(name);
   if (!source) throw new Error("未找到该生成资产");
   if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
 
+  let sourcePath = source.filePath || "";
+  const tempFiles = [];
+  if (!sourcePath && source.objectKey) {
+    sourcePath = path.join(RUNTIME_ROOT, "tmp", `split-source-${source.name}`);
+    tempFiles.push(sourcePath);
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, await storageGet(source.objectKey));
+  }
   const sourceRef = outputReference(
     source.url,
     "SOURCE_KV",
     "待拆分的完整 KV 图，用于提取标题文字层和干净背景层。",
-    source.filePath,
+    sourcePath,
+    source.objectKey || "",
   );
-  const size = imageEditSizeForFile(source.filePath, "1024x1024");
+  const size = imageEditSizeForFile(sourcePath, "1024x1024");
   const titlePrompt = buildTitleExtractionPrompt({ title, subtitle, time });
   const backgroundPrompt = buildBackgroundExtractionPrompt({ title, subtitle, time });
 
   const [titleLayer, backgroundLayer] = await Promise.all([
-    generateImageEditFile({ prompt: titlePrompt, selected: [sourceRef], size, prefix: "title-extract", applyOverlay: false }),
-    generateImageEditFile({ prompt: backgroundPrompt, selected: [sourceRef], size, prefix: "background-clean", applyOverlay: false }),
+    generateImageEditFile({ prompt: titlePrompt, selected: [sourceRef], size, prefix: "title-extract", applyOverlay: false, keepTemp: IS_OSS }),
+    generateImageEditFile({ prompt: backgroundPrompt, selected: [sourceRef], size, prefix: "background-clean", applyOverlay: false, keepTemp: IS_OSS }),
   ]);
 
-  if (!titleLayer.skipped && titleLayer.output_path) {
+  const titleSourcePath = IS_OSS ? titleLayer.temp_path : titleLayer.output_path;
+  if (!titleLayer.skipped && titleSourcePath) {
     try {
-      const transparentPath = await makeTitleTransparent(titleLayer.output_path);
-      titleLayer.transparent_url = `/outputs/${path.basename(transparentPath)}`;
+      const transparentPath = await makeTitleTransparent(titleSourcePath);
+      const transparentName = path.basename(transparentPath);
+      tempFiles.push(transparentPath);
+      titleLayer.transparent_object_key = outputKey(transparentName);
+      if (IS_OSS) {
+        await storagePut(outputKey(transparentName), await readFile(transparentPath), { contentType: "image/png" });
+      }
+      titleLayer.transparent_url = storageSignUrl(outputKey(transparentName));
     } catch (error) {
       titleLayer.transparent_warning = error.message;
     }
   }
 
   const splitPackage = await writeSplitPackage({ source, title, subtitle, time, titleLayer, backgroundLayer });
+  await saveAssetSplitRecord(name, { title_layer: titleLayer, background_layer: backgroundLayer, split_package: splitPackage });
+  for (const file of tempFiles) await unlink(file).catch(() => {});
+  if (IS_OSS) {
+    if (titleLayer.temp_path) await unlink(titleLayer.temp_path).catch(() => {});
+    if (backgroundLayer.temp_path) await unlink(backgroundLayer.temp_path).catch(() => {});
+  }
   const publicTitleLayer = { ...titleLayer };
   const publicBackgroundLayer = { ...backgroundLayer };
   delete publicTitleLayer.output_path;
+  delete publicTitleLayer.temp_path;
   delete publicBackgroundLayer.output_path;
+  delete publicBackgroundLayer.temp_path;
   return {
     ok: true,
     source,
@@ -5792,6 +6263,13 @@ async function runPipeline(request, onStage = () => {}) {
       },
     },
   };
+  if (imageResult && !imageResult.skipped) {
+    try {
+      await persistAssetRecord(result);
+    } catch (error) {
+      warnings.push({ stage: "asset-persist", message: error.message });
+    }
+  }
   onStage("complete", result);
   return result;
 }
@@ -5897,33 +6375,42 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/style-presets") {
-      jsonResponse(res, 200, { presets: stylePresetCardsWithIntegratedLayouts(), custom_presets: loadCustomStylePresets() });
+      jsonResponse(res, 200, decorateUploadUrls({
+        presets: stylePresetCardsWithIntegratedLayouts(),
+        custom_presets: loadCustomStylePresets(),
+      }));
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/style-presets/add") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const { fields, files } = await readMultipart(req);
-      jsonResponse(res, 200, await createCustomStylePreset(fields, files));
+      jsonResponse(res, 200, decorateUploadUrls(await createCustomStylePreset(fields, files)));
       return;
     }
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/style-presets/")) {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const id = decodeURIComponent(url.pathname.replace("/api/style-presets/", "")).trim();
       const result = await deleteCustomStylePreset(id);
       if (!result) {
         jsonResponse(res, 404, { error: "未找到可删除的自定义风格" });
         return;
       }
-      jsonResponse(res, 200, result);
+      jsonResponse(res, 200, decorateUploadUrls(result));
       return;
     }
 
     if (req.method === "GET" && url.pathname === "/api/materials") {
-      jsonResponse(res, 200, { materials: await loadMaterials() });
+      jsonResponse(res, 200, { materials: decorateUploadUrls(await loadMaterials()) });
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/search") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_SEARCH_PER_MIN)) return;
       const body = await readJsonBody(req);
       try {
         jsonResponse(res, 200, await searchDesignInspiration(body.keyword, body.limit));
@@ -5952,30 +6439,36 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && url.pathname === "/api/materials/save-inspiration") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const body = await readJsonBody(req);
-      jsonResponse(res, 200, await saveInspirationMaterial(body));
+      jsonResponse(res, 200, decorateUploadUrls(await saveInspirationMaterial(body)));
       return;
     }
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/materials/")) {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const number = decodeURIComponent(url.pathname.replace("/api/materials/", "")).trim();
       const result = await deleteMaterialByNumber(number);
       if (!result) {
         jsonResponse(res, 404, { error: "未找到该素材" });
         return;
       }
-      jsonResponse(res, 200, result);
+      jsonResponse(res, 200, decorateUploadUrls(result));
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/materials/delete") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const body = await readJsonBody(req);
       const result = await deleteMaterialByNumber(body.number);
       if (!result) {
         jsonResponse(res, 404, { error: "未找到该素材" });
         return;
       }
-      jsonResponse(res, 200, result);
+      jsonResponse(res, 200, decorateUploadUrls(result));
       return;
     }
 
@@ -5985,6 +6478,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/assets/")) {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const name = decodeURIComponent(url.pathname.replace("/api/assets/", "")).trim();
       const result = await deleteAssetByName(name);
       if (!result) {
@@ -5996,6 +6491,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && url.pathname === "/api/assets/delete") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const body = await readJsonBody(req);
       const result = await deleteAssetByName(body.name);
       if (!result) {
@@ -6007,6 +6504,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && url.pathname === "/api/assets/split") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const body = await readJsonBody(req);
       const result = await splitAssetLayers({
         name: body.name,
@@ -6019,6 +6518,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && url.pathname === "/api/materials/add") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const { fields, files } = await readMultipart(req);
       const existing = await loadMaterials();
       const image = files.image ? await saveUploadedFile(files.image, fields.number || "material") : textOf(fields.image).trim();
@@ -6041,37 +6542,47 @@ const server = createServer(async (req, res) => {
       if (!material.reference_roles.length || !material.reference_description) throw new Error("参考用途和参考描述不能为空");
       const withoutSame = existing.filter((item) => item.number !== material.number);
       const materials = await saveMaterials([...withoutSame, material]);
-      jsonResponse(res, 200, { ok: true, material, count: materials.length });
+      jsonResponse(res, 200, decorateUploadUrls({ ok: true, material, count: materials.length, materials }));
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/materials/import-xlsx") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
       const { files } = await readMultipart(req);
       if (!files.xlsx) throw new Error("请上传 xlsx 文件");
+      validateXlsxFile(files.xlsx);
       await mkdir(UPLOAD_DIR, { recursive: true });
-      const importPath = path.join(UPLOAD_DIR, `import-${Date.now()}${path.extname(files.xlsx.filename) || ".xlsx"}`);
+      const importName = `import-${Date.now()}${path.extname(files.xlsx.filename) || ".xlsx"}`.replace(/[^\w.-]/g, "_");
+      const importPath = path.join(UPLOAD_DIR, importName);
       await writeFile(importPath, files.xlsx.data);
       const imported = (await runPythonImport(importPath)).map(normalizeMaterial).filter((item) => item.number && item.type);
       const existing = await loadMaterials();
       const incomingNumbers = new Set(imported.map((item) => item.number));
       const materials = await saveMaterials([...existing.filter((item) => !incomingNumbers.has(item.number)), ...imported]);
-      jsonResponse(res, 200, { ok: true, imported: imported.length, count: materials.length, materials });
+      jsonResponse(res, 200, decorateUploadUrls({ ok: true, imported: imported.length, count: materials.length, materials }));
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/expand-description") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_EXPAND_PER_MIN)) return;
       const body = validateExpandRequest(await readJsonBody(req));
       jsonResponse(res, 200, await expandVisualDescription(body));
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/run") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_RUN_PER_MIN)) return;
       const body = await readRunRequest(req);
       jsonResponse(res, 200, await runPipeline(body));
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/api/run-stream") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_RUN_PER_MIN)) return;
       const body = await readRunRequest(req);
       res.writeHead(200, {
         "Content-Type": "text/event-stream; charset=utf-8",
@@ -6094,6 +6605,14 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/outputs/")) {
+      if (IS_OSS) {
+        const name = decodeURIComponent(url.pathname.replace("/outputs/", "")).trim();
+        if (name && name === path.basename(name) && await storageExists(outputKey(name))) {
+          res.writeHead(302, { Location: storageSignUrl(outputKey(name)) });
+          res.end();
+          return;
+        }
+      }
       await serveStatic(res, path.join(OUTPUT_DIR, decodeURIComponent(url.pathname.replace("/outputs/", ""))), OUTPUT_DIR);
       return;
     }
@@ -6132,10 +6651,15 @@ const server = createServer(async (req, res) => {
     const publicPath = url.pathname === "/" ? "/index.html" : url.pathname;
     await serveStatic(res, path.join(PUBLIC_DIR, decodeURIComponent(publicPath)), PUBLIC_DIR);
   } catch (error) {
-    jsonResponse(res, 500, { error: error.message || "Server error" });
+    jsonResponse(res, error.statusCode || 500, { error: error.message || "Server error" });
   }
 });
 
+try {
+  await hydrateCustomStylePresets();
+} catch (error) {
+  console.warn(`自定义风格预设读取失败：${error.message}`);
+}
 server.listen(PORT, () => {
   console.log(`KV Reference Prompt Studio running at http://localhost:${PORT}`);
 });

@@ -348,6 +348,25 @@ button:disabled {
   border-radius: 4px;
 }
 
+.admin-token-input {
+  width: 130px;
+  padding: 8px 10px;
+  border: 1px solid rgba(120, 120, 128, 0.45);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1d1d1f;
+  font-size: 13px;
+  outline: none;
+}
+
+.admin-token-input:focus {
+  border-color: #f53f2f;
+}
+
+.admin-token-input::placeholder {
+  color: #a0a0a8;
+}
+
 .send-button {
   width: 38px;
   min-width: 38px;

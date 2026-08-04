@@ -8,8 +8,8 @@ node_modules/
 # Runtime-generated files are preserved in the tagged snapshot bundle, not in Git.
 outputs/*
 !outputs/.gitkeep
+data/assets.json
 uploads/references/*
 !uploads/references/.gitkeep
 archives/
 release-bundles/
-

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "ali-oss": "^6.23.0"
+  },
   "scripts": {
     "export:materials": "python3 tools/export_materials.py",
     "sync:preset-materials": "node tools/sync_preset_materials.mjs",
