@@ -1,4 +1,0 @@
-Main prompt:
-Healing doodle travel title font, text content: 旅行随地大小拍, thick rounded soft hand-drawn main font in solid blue, light green small English subtitle "Travel" inserted in the middle, hollow light green triangle decorative icon on the right side, strokes with rough hand-drawn brush edge texture, slight irregular handwriting jitter, pure white minimalist background, staggered upper and lower text layout, 2D flat design without shadow and gradient, fresh outdoor travel short video cover, soft cute hand account font, complete clear text, low saturation fresh color palette
-
-Negative prompt: distorted text, blurry font, overlapping strokes, garbled characters, 3D emboss, gradient color, shadow, lighting, perspective, real people, scenery, debris, borders, heavy noise, outline stroke, watermark, complex background, broken strokes, incomplete text

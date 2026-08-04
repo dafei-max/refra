@@ -1,1 +1,0 @@
-Vertical layout template, the red dashed frame area at the top holds the main title, followed by a purple dashed frame section for subtext time module right below the title. The main image area is centered in the middle of the layout, with a light gray small square at the bottom-left and bottom-right corners respectively for decorative English text.

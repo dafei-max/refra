@@ -1,4 +1,0 @@
-Main prompt:
-2D flat kraft paper hand-drawn cartoon font, text content: 不完美手工线上展，thick block rounded handwriting strokes, natural paper-cut jitter texture, solid dark kraft brown font, pale light-blue minimalist background, multi-line centered text layout, simple hand-doodle chalk texture
-
-Negative prompt: gradient color, shadow emboss, perspective blur, messy borders, garbled letters, heavy noise

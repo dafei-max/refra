@@ -1,4 +1,0 @@
-Main prompt:
-2D flat bold naive handwritten cartoon font, text content: 地球村音乐会，full rounded uniform thick strokes, slight natural handwriting jitter, solid pure white font on bright solid blue background, handwritten brush chalk stamp texture, small musical note doodle icon
-
-Negative prompt: shadow gradient, 3D emboss, text deformation, messy extra scenery, broken strokes, noisy grain

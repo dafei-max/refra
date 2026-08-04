@@ -13,3 +13,7 @@ uploads/references/*
 !uploads/references/.gitkeep
 archives/
 release-bundles/
+
+# Review / speech materials are not runtime resources.
+case/
+汇报材料/

@@ -23,7 +23,6 @@ const DESCRIPTION_LIMIT = 3600;
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 const ACTIVE_PRESETS = [
-  { id: "HANDDRAWN", name: "手绘扁平涂鸦", dir: "手绘扁平涂鸦" },
   { id: "3D", name: "3D风格", dir: "3D风格" },
   { id: "MINIMALFLAT", name: "极简扁平插画", dir: "极简扁平插画" },
   { id: "REALPRODUCT", name: "实景商品", dir: "实景商品" },

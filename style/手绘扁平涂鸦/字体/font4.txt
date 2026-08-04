@@ -1,4 +1,0 @@
-Main prompt:
-Chalk hand-drawn texture title font, text content: 在阳光下往返于春天, soft thick solid white handwritten Chinese characters, flowing light green handwritten English word "Spring" at the bottom, tiny light green comma decorations on both sides, matte pure black background, centered stacked text layout, rough chalk grain texture, slight stroke thickness variation, gentle healing spring atmosphere, pure 2D flat design without 3D effects, spring theme short video cover title, soft rounded font, low contrast mild color matching
-
-Negative prompt: distorted text, blurry font, overlapping strokes, garbled characters, 3D emboss, gradient color, shadow, lighting, perspective, real people, scenery, debris, borders, heavy noise, outline stroke, watermark, complex background, broken strokes, incomplete text

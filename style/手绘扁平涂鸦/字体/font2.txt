@@ -1,4 +1,0 @@
-Main prompt:
-2D flat doodle hand-drawn title font, text content: 职场有路子, thick square rounded handwritten font, full and heavy strokes, slight uneven hand-drawn distortion, high-saturation solid bright red font, pure white clean background, staggered layered text layout, no outline and shadow, minimalist solid color, workplace short video cover title, cute hand account font, complete clear Chinese characters, no extra decorations, simple clean chalk hand-drawn texture
-
-Negative prompt: distorted text, blurry font, overlapping strokes, garbled characters, 3D emboss, gradient color, shadow, lighting, perspective, real people, scenery, debris, borders, heavy noise, outline stroke, watermark, complex background, broken strokes, incomplete text

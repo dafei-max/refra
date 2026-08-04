@@ -1,4 +1,0 @@
-Main prompt:
-2D flat cute handwritten cartoon font, text content: 春日进行曲，soft rounded cursive Chinese strokes, solid mint green font with thin white outline, four-pointed star & flower doodle decorations, pale mint simple background, hand account chalk eraser texture, fully flat no shadow gradient
-
-Negative prompt: garbled text, embossed 3D, heavy shadow, color gradient, distorted curves, messy extra elements

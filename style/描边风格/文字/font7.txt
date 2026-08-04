@@ -1,4 +1,0 @@
-Main prompt:
-2D flat neat hand-drawn title font, text content: 故事幻城，semi-rounded thick handwritten Chinese font, mild subtle handwriting irregularity, solid dark navy font, pale light-blue blank background, two-line centered layout, tiny doodle symbol accent, clean chalk texture no shadow
-
-Negative prompt: cartoon distorted strokes, 3D bump, color gradient, decorative clutter, blurry character edges, overlapping text

@@ -1,4 +1,0 @@
-Main prompt:
-2D flat minimalist hand-drawn cartoon title font, text content: 新生代创作大赛，thick rounded regular handwritten strokes, tiny natural handwriting jitter, solid pure black font on high-saturation solid yellow background, small dot doodle accent, clean matte chalk hand-doodle texture
-
-Negative prompt: shadow, gradient, 3D emboss, text distortion, complex background borders, broken incomplete font strokes
