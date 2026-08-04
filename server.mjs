@@ -1373,10 +1373,7 @@ function outputKey(name) {
 
 function presetByStyleId(styleId) {
   if (styleId === NO_PRESET_ID) return null;
-  if (styleId === CLAY_PRESET.preset_id) return CLAY_PRESET;
-  if (styleId === HAND_DRAWN_PRESET.preset_id) return HAND_DRAWN_PRESET;
   if (styleId === THREE_D_PRESET.preset_id) return THREE_D_PRESET;
-  if (styleId === OUTLINE_PRESET.preset_id) return OUTLINE_PRESET;
   if (styleId === MINIMAL_FLAT_PRESET.preset_id) return MINIMAL_FLAT_PRESET;
   if (styleId === REAL_PRODUCT_PRESET.preset_id) return REAL_PRODUCT_PRESET;
   if (styleId === REAL_PERSON_PRESET.preset_id) return REAL_PERSON_PRESET;
@@ -1391,7 +1388,8 @@ function resolveStylePresetId(value) {
   const raw = textOf(value).trim();
   if (!raw) return STYLE_PRESETS[0].id;
   const normalized = raw.toLowerCase();
-  const match = allStylePresetCards().find((item) => (
+  const cards = allStylePresetCards();
+  const match = cards.find((item) => (
     item.id === raw ||
     item.preset_id === raw ||
     item.name === raw ||
@@ -1399,7 +1397,12 @@ function resolveStylePresetId(value) {
     item.preset_id?.toLowerCase() === normalized ||
     item.id?.toLowerCase() === normalized
   ));
-  return match?.id || STYLE_PRESETS[0].id;
+  if (!match) {
+    const error = new Error(`未知或已下线的风格预设：${raw}。可用预设：${cards.map((item) => item.id).join("、")}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return match.id;
 }
 
 function hasPetIntent(input) {
@@ -1416,19 +1419,19 @@ function hasPersonIntent(input) {
   return /(人物|真人|模特|女生|女孩|男生|男孩|小女孩|小男孩|人像|穿搭|手持|手掌|脚掌|鞋底|腿部|身体|滑板|冲浪|运动|跳跃|跑步|角色)/.test(source);
 }
 
-function petConstraint(preset = CLAY_PRESET) {
+function petConstraint(preset = null) {
   return preset?.pet_character_style_constraint || {};
 }
 
-function petPositiveText(preset = CLAY_PRESET) {
+function petPositiveText(preset = null) {
   return (petConstraint(preset).positive_prompt || []).join("、");
 }
 
-function petNegativeText(preset = CLAY_PRESET) {
+function petNegativeText(preset = null) {
   return (petConstraint(preset).negative_prompt || []).join("，");
 }
 
-function petCharacterBlock(constraint = CLAY_PRESET.pet_character_style_constraint) {
+function petCharacterBlock(constraint = null) {
   const positive = (constraint?.positive_prompt || []).join("、");
   const negative = (constraint?.negative_prompt || []).join("，");
   return `【宠物角色造型约束】\n本次画面包含宠物角色。${constraint?.description || "宠物不要生成写实猫狗，而要做成设计化IP形象。"} 正向造型要求：${positive}。禁止项：${negative}。以上英文仅作为风格关键词，不得作为画面文字生成。`;
@@ -1965,7 +1968,8 @@ function samplePresetReferences(variants = [], count = 1) {
     .slice(0, limit);
 }
 
-function choosePresetVariant(preset = CLAY_PRESET, request = {}) {
+function choosePresetVariant(preset = null, request = {}) {
+  if (!preset) return null;
   const referenceGroups = presetReferenceGroups(preset);
   if (referenceGroups.length) {
     const orientation = compositionOrientation(request.image_size);
@@ -1986,11 +1990,11 @@ function choosePresetVariant(preset = CLAY_PRESET, request = {}) {
       references,
     };
   }
-  const variants = preset.title_variants || CLAY_PRESET.title_variants;
+  const variants = preset.title_variants || [];
   return variants[Math.floor(Math.random() * variants.length)] || variants[0] || null;
 }
 
-function buildPresetReferences(variant, preset = CLAY_PRESET) {
+function buildPresetReferences(variant, preset = null) {
   if (!variant) return [];
   if (Array.isArray(variant.references)) {
     return variant.references.map((item) => buildPresetReference(item, preset)).filter(Boolean);
@@ -1998,8 +2002,8 @@ function buildPresetReferences(variant, preset = CLAY_PRESET) {
   return [buildPresetReference(variant, preset)].filter(Boolean);
 }
 
-function buildPresetReference(variant, preset = CLAY_PRESET) {
-  if (!variant) return null;
+function buildPresetReference(variant, preset = null) {
+  if (!variant || !preset) return null;
   const url = presetReferenceUrl(preset, variant.file, variant);
   const referencePresetId = preset.preset_id;
   const referencePresetName = preset.preset_name;
@@ -3703,7 +3707,7 @@ function localDesign(request, brief) {
   };
 }
 
-function buildPresetDesign(request, brief, variant, preset = CLAY_PRESET) {
+function buildPresetDesign(request, brief, variant, preset = null) {
   const base = localDesign(request, brief);
   if (!preset) {
     return {
@@ -6402,7 +6406,7 @@ const server = createServer(async (req, res) => {
           reasoning_effort: OPENAI_REASONING_EFFORT || "model-default",
           json_network_retry: !FAST_PIPELINE,
         },
-        preset: { id: CLAY_PRESET.preset_id, name: CLAY_PRESET.preset_name, variants: CLAY_PRESET.title_variants.length },
+        preset: { id: STYLE_PRESETS[0].id, name: STYLE_PRESETS[0].name },
         style_presets: allStylePresetCards(),
         material_count: materials.length,
       });

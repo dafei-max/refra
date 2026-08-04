@@ -167,7 +167,7 @@ style/<风格名>/
 - `prompt生成.md`：最终 Prompt 结构策略。
 - `style/`：风格、整合版式、元素和角色参考。
 - `creative_methods/`：创意方法卡。
-- `case/`：Good Case、Bad Case 与评审材料。
+- `case/`：Good Case、Bad Case 与评审材料；已移出 Git（2026-08-04），归档于 OSS `oss://refra-assets/case/`，本地保留未跟踪副本。
 - `素材资产库图片素材/`、`素材资产库.xlsx`：历史素材库。
 - `services/`：Vercel/服务入口相关代码。
 - `outputs/`、`uploads/`、`data/`：本地运行时资产；线上写入规则见下文。
@@ -295,3 +295,11 @@ Failed to parse URL from /style/%E7%9C%9F%E5%AE%9E%E4%BA%BA%E7%89%A9/%E6%95%B4%E
 ## 11. 给 Claude Code 的首个任务建议
 
 先阅读本文件、`CLAUDE.md`、`README.md` 和 `SNAPSHOT.md`，然后只处理 P0：设计并实现统一图片来源解析器，补充本地测试和 Vercel 冒烟验证。不要在同一个提交里调整 Prompt、UI 或两阶段生成策略。
+
+## 12. 资产清理记录（2026-08-04）
+
+- 删除六个未使用的风格目录：`y3k`、`手帐拼贴`、`毛毡风格`、`黏土萌趣`、`描边风格`、`手绘扁平涂鸦`（commit `c9f4b0d`，可从 tag `v0.1.0-oss-stable` 恢复）。
+- `汇报材料/` 已从 Git 与本地删除（可从同一 tag 恢复）。
+- `case/` 移出 Git 跟踪（本地保留副本，已加入 `.gitignore`），归档目标：OSS `refra-assets` 桶，路径 `oss://refra-assets/case/`。上传：`ossutil cp -r ./case oss://refra-assets/case/`（使用 RAM 用户 `refra-oss` 的密钥）。
+- 已下线预设 id（服务端返回 400）：`hand_drawn_flat_doodle_v1`、`outline_style_v1`、`clay_fun_activity_poster_v1`、`scrapbook_collage_poster_v1`、`y3k_cyber_fashion_poster_v1`；对应预设常量保留为休眠数据，未再从 `presetByStyleId` / `choosePresetVariant` 引用。
+- 效果：Git 跟踪体积约 592M → 470M；Vercel 部署包同步变轻。历史体积（GitHub 克隆）未变，如需进一步瘦身需重写历史（暂缓）。
