@@ -6,6 +6,7 @@
       "entrypoint": "server.mjs",
       "functions": {
         "server.mjs": {
+          "regions": ["hnd1"],
           "includeFiles": "{Brief理解.md,设计判断.md,检索匹配.md,prompt生成.md,image/**,兜兜/**,uploads/**,data/**}"
         }
       }
