@@ -883,7 +883,16 @@ async function expandDescription() {
 function readAssetRecords() {
   try {
     const parsed = JSON.parse(localStorage.getItem(ASSET_RECORD_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
+    const list = (Array.isArray(parsed) ? parsed : []).map(normalizeAssetRecord);
+    const seen = new Set();
+    const result = [];
+    for (const item of list) {
+      const key = item.object_key || `name:${item.name || ""}`;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(item);
+    }
+    return result;
   } catch {
     return [];
   }
@@ -897,10 +906,25 @@ function writeAssetRecords(records) {
   }
 }
 
+function assetNameFromUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  return decodeURIComponent(raw.split(/[?#]/)[0].split("/").pop() || "");
+}
+
+function normalizeAssetRecord(record) {
+  const item = { ...record };
+  const rawName = String(item.name || "").trim();
+  if (!rawName || rawName.includes("?") || /^https?:\/\//i.test(rawName)) {
+    item.name = String(item.object_key || "").split("/").pop() || assetNameFromUrl(item.url);
+  }
+  return item;
+}
+
 function saveAssetRecord(result) {
   const image = result?.image_result;
   if (!image?.url || image.skipped) return;
-  const name = decodeURIComponent(image.url.split("/").pop() || image.url);
+  const name = String(image.name || "").trim() || assetNameFromUrl(image.url);
   const record = {
     name,
     url: image.url,
@@ -918,12 +942,17 @@ function saveAssetRecord(result) {
     layers: image.layers || null,
     created_at: new Date().toISOString(),
   };
-  const records = readAssetRecords().filter((item) => item.name !== name && item.url !== image.url);
+  const records = readAssetRecords().filter((item) => {
+    if (image.object_key && item.object_key) return item.object_key !== image.object_key;
+    return item.name !== name && item.url !== image.url;
+  });
   records.push(record);
   writeAssetRecords(records);
 }
 
-async function deleteAsset(name) {
+async function deleteAsset(rawName) {
+  const name = assetNameFromUrl(rawName) || String(rawName || "").trim();
+  if (!name) throw new Error("缺少要删除的资产名称");
   const response = await apiFetch(`/api/assets/${encodeURIComponent(name)}`, { method: "DELETE" });
   const payload = await response.json().catch(() => ({}));
   if (response.ok) return payload;
@@ -978,12 +1007,16 @@ function saveAssetSplitResult(item, splitResult) {
 function renderAssets(items) {
   const records = readAssetRecords();
   const merged = items.map((asset) => {
-    const record = records.find((item) => item.name === asset.name || item.url === asset.url) || {};
+    const record = records.find((item) => (
+      (item.object_key && asset.object_key)
+        ? item.object_key === asset.object_key
+        : (item.name === asset.name || item.url === asset.url)
+    )) || {};
     return { ...record, ...asset, url: asset.url || record.url };
   });
-  const known = new Set(merged.map((item) => item.name || item.url));
+  const known = new Set(merged.map((item) => item.object_key || item.name || item.url));
   records.forEach((record) => {
-    if (!known.has(record.name || record.url)) merged.push(record);
+    if (!known.has(record.object_key || record.name || record.url)) merged.push(record);
   });
   const timestamp = (item) => {
     const value = item.created_at || item.modified_at || "";
@@ -1043,8 +1076,11 @@ function renderAssets(items) {
       if (!name || !window.confirm(`确认删除资产 ${name}？`)) return;
       button.disabled = true;
       try {
+        const target = ordered.find((item) => item.name === name);
         const payload = await deleteAsset(name);
-        writeAssetRecords(readAssetRecords().filter((item) => item.name !== name));
+        writeAssetRecords(readAssetRecords().filter((item) => (
+          item.name !== name && (!target?.object_key || item.object_key !== target.object_key)
+        )));
         renderAssets(payload.assets || []);
       } catch (error) {
         button.disabled = false;

@@ -2195,10 +2195,34 @@ async function saveMaterials(materials) {
 
 const PACKAGED_ASSETS_PATH = path.join(__dirname, "data", "assets.json");
 
+function normalizeAssetIndexRecord(raw) {
+  const item = { ...(raw && typeof raw === "object" ? raw : {}) };
+  const objKey = String(item.object_key || "").trim();
+  const rawName = String(item.name || "").trim();
+  const rawUrl = String(item.url || "").trim();
+  if (!objKey && !rawName && !rawUrl) return null;
+  const cleanName = (!rawName || rawName.includes("?") || /^https?:\/\//i.test(rawName))
+    ? (objKey ? objKey.split("/").pop() : decodeURIComponent(rawUrl.split(/[?#]/)[0].split("/").pop() || "") || rawName)
+    : rawName;
+  item.name = cleanName;
+  return item;
+}
+
 async function loadAssetsIndex() {
   try {
     const payload = JSON.parse((await storageGet("data/assets.json")).toString("utf-8"));
-    return Array.isArray(payload?.assets) ? payload.assets : [];
+    const list = Array.isArray(payload?.assets) ? payload.assets : [];
+    const seen = new Set();
+    const result = [];
+    for (const raw of list) {
+      const item = normalizeAssetIndexRecord(raw);
+      if (!item) continue;
+      const key = item.object_key || `name:${item.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(item);
+    }
+    return result;
   } catch (error) {
     if (!(error instanceof StorageError)) throw error;
     if (!IS_OSS && existsSync(PACKAGED_ASSETS_PATH)) {
@@ -2306,7 +2330,9 @@ async function persistAssetRecord(result) {
   const name = textOf(image?.name).trim();
   if (!name || image?.skipped) return;
   const assets = await loadAssetsIndex();
-  const existing = assets.find((item) => item.name === name);
+  const existing = assets.find((item) => (
+    (image.object_key && item.object_key === image.object_key) || item.name === name
+  ));
   const record = {
     name,
     object_key: image.object_key || outputKey(name),
@@ -2334,7 +2360,9 @@ async function persistAssetRecord(result) {
     created_at: existing?.created_at || new Date().toISOString(),
     modified_at: new Date().toISOString(),
   };
-  const next = assets.filter((item) => item.name !== name);
+  const next = assets.filter((item) => !(
+    (image.object_key && item.object_key === image.object_key) || item.name === name
+  ));
   next.push(record);
   await saveAssetsIndex(next);
 }
@@ -2360,10 +2388,17 @@ async function saveAssetSplitRecord(name, splitResult) {
 }
 
 async function deleteAssetByName(rawName) {
-  const name = String(rawName || "").trim();
-  if (!name) return null;
+  const raw = String(rawName || "").trim();
+  if (!raw) return null;
+  const name = decodeURIComponent(raw.split(/[?#]/)[0].split("/").pop() || raw);
   const assets = await loadAssetsIndex();
-  const target = assets.find((item) => item.name === name);
+  const target = assets.find((item) => (
+    item.name === raw ||
+    item.name === name ||
+    item.object_key === raw ||
+    item.object_key === `outputs/${name}` ||
+    (item.object_key && item.object_key.split("/").pop() === name)
+  ));
   if (target) {
     for (const key of collectAssetKeys(target)) {
       await storageDelete(key);
