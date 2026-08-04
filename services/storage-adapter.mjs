@@ -131,11 +131,21 @@ export async function storageGet(key) {
   assertInitialized();
   const normalized = normalizeKey(key);
   if (backend === "oss") {
-    const result = await ossClient.get(normalized);
-    if (result.res?.status === 404 || result.content == null) {
-      throw new StorageError(`对象不存在: ${normalized}`);
+    try {
+      const result = await ossClient.get(normalized);
+      if (result.res?.status === 404 || result.content == null) {
+        throw new StorageError(`对象不存在: ${normalized}`);
+      }
+      return Buffer.from(result.content);
+    } catch (error) {
+      if (error instanceof StorageError) throw error;
+      const status = error?.status || error?.statusCode || error?.code;
+      const message = String(error?.message || "");
+      if (status === 404 || /NoSuchKey|specified key does not exist/i.test(message)) {
+        throw new StorageError(`对象不存在: ${normalized}`);
+      }
+      throw error;
     }
-    return Buffer.from(result.content);
   }
   try {
     return await readFile(fsPathFor(normalized));
