@@ -6,6 +6,7 @@
   "scripts": {
     "export:materials": "python3 tools/export_materials.py",
     "sync:preset-materials": "node tools/sync_preset_materials.mjs",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node --test"
   }
 }

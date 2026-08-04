@@ -7,6 +7,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { searchDesignInspiration } from "./services/inspiration/index.mjs";
 import { getInspirationImage, ImageProxyError } from "./services/inspiration/image-proxy.mjs";
+import {
+  ImageSourceError,
+  extensionForType,
+  resolveImageBytes,
+  resolveLocalSource,
+} from "./services/image-source-resolver.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2063,26 +2069,36 @@ function outputAssetPathByName(rawName) {
   return { name, filePath, url: `/outputs/${name}` };
 }
 
+function imageSourceRoots() {
+  return {
+    style: STYLE_DIR,
+    image: IMAGE_DIR,
+    doudou: DOUDOU_DIR,
+    assets: ASSET_DIR,
+    uploads: [UPLOAD_ROOT, PACKAGED_UPLOAD_ROOT],
+    outputs: OUTPUT_DIR,
+  };
+}
+
+function vercelDeploymentBaseUrl() {
+  const raw = String(
+    process.env.VERCEL_URL
+    || process.env.VERCEL_PROJECT_PRODUCTION_URL
+    || process.env.VERCEL_BRANCH_URL
+    || process.env.REFRA_DEPLOYMENT_BASE_URL
+    || "",
+  ).trim();
+  if (!raw) return "";
+  const host = raw.replace(/^https?:\/\//i, "").split("/")[0].split("?")[0].split("#")[0];
+  if (!/^[a-z0-9.-]+$/i.test(host) || !host.includes(".")) return "";
+  return `https://${host}`;
+}
+
 function materialImagePath(image) {
-  if (image.startsWith("/assets/")) return { file: path.join(ASSET_DIR, decodeURIComponent(image.replace("/assets/", ""))), base: ASSET_DIR };
-  if (image.startsWith("/image/")) return { file: path.join(IMAGE_DIR, decodeURIComponent(image.replace("/image/", ""))), base: IMAGE_DIR };
-  if (image.startsWith("/doudou/")) return { file: path.join(DOUDOU_DIR, decodeURIComponent(image.replace("/doudou/", ""))), base: DOUDOU_DIR };
-  if (image.startsWith("/style/")) return { file: path.join(STYLE_DIR, decodeURIComponent(image.replace("/style/", ""))), base: STYLE_DIR };
-  if (image.startsWith("/sytle/")) return { file: path.join(STYLE_DIR, decodeURIComponent(image.replace("/sytle/", ""))), base: STYLE_DIR };
-  if (image.startsWith("/style/")) return { file: path.join(STYLE_DIR, decodeURIComponent(image.replace("/style/", ""))), base: STYLE_DIR };
-  if (image.startsWith("/uploads/")) {
-    const relative = decodeURIComponent(image.replace("/uploads/", ""));
-    const runtimeFile = path.join(UPLOAD_ROOT, relative);
-    if (existsSync(runtimeFile) || !IS_VERCEL) {
-      return { file: runtimeFile, base: UPLOAD_ROOT };
-    }
-    return {
-      file: path.join(PACKAGED_UPLOAD_ROOT, relative),
-      base: PACKAGED_UPLOAD_ROOT,
-    };
-  }
-  if (image.startsWith("/outputs/")) return { file: path.join(OUTPUT_DIR, decodeURIComponent(image.replace("/outputs/", ""))), base: OUTPUT_DIR };
-  return null;
+  const source = textOf(image).trim();
+  if (!source) return null;
+  const local = resolveLocalSource(source, imageSourceRoots());
+  return local ? { file: local.file, base: local.base } : null;
 }
 
 async function deleteUploadedMaterialImage(material) {
@@ -4977,30 +4993,24 @@ async function fetchImageBytes(selected) {
         "主体": "subject",
       }[role] || (item.source === "兜兜IP" ? "doudou" : "reference");
       const sequence = String(index + 1).padStart(2, "0");
-      const localImage = textOf(item.local_image || item.image || "").trim();
-      const local = path.isAbsolute(localImage)
-        ? { file: localImage, base: path.dirname(localImage) }
-        : materialImagePath(localImage);
-      if (local && existsSync(local.file)) {
-        const extension = path.extname(local.file) || ".png";
+      const source = textOf(item.local_image || item.image_url || item.image || "").trim();
+      try {
+        const resolved = await resolveImageBytes(source, {
+          roots: imageSourceRoots(),
+          deploymentBaseUrl: vercelDeploymentBaseUrl(),
+        });
         return {
           item,
-          bytes: await readFile(local.file),
-          filename: `${sequence}-${roleSlug}-${safeSlug(item.number, "reference")}${extension}`,
-          type: MIME[extension.toLowerCase()] || "image/png",
+          bytes: resolved.bytes,
+          filename: `${sequence}-${roleSlug}-${safeSlug(item.number, "reference")}${extensionForType(resolved.type)}`,
+          type: resolved.type,
         };
+      } catch (error) {
+        if (error instanceof ImageSourceError) {
+          throw new Error(`素材 ${item.number} 图片解析失败：${error.message}`);
+        }
+        throw error;
       }
-      const remote = item.image_url || item.image;
-      if (!remote) throw new Error(`素材 ${item.number} 没有可用图片`);
-      const response = await fetch(remote);
-      if (!response.ok) throw new Error(`下载参考图 ${item.number} 失败：${response.status}`);
-      const bytes = Buffer.from(await response.arrayBuffer());
-      return {
-        item,
-        bytes,
-        filename: `${sequence}-${roleSlug}-${safeSlug(item.number, "reference")}.png`,
-        type: response.headers.get("content-type") || "image/png",
-      };
     }),
   );
 }
