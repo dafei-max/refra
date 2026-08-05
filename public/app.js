@@ -1016,7 +1016,7 @@ function renderAssets(items) {
   });
   const known = new Set(merged.map((item) => item.object_key || item.name || item.url));
   records.forEach((record) => {
-    if (!known.has(record.object_key || record.name || record.url)) merged.push(record);
+    if (!known.has(record.object_key || record.name || record.url)) merged.push({ ...record, local_only: true });
   });
   const timestamp = (item) => {
     const value = item.created_at || item.modified_at || "";
@@ -1083,6 +1083,14 @@ function renderAssets(items) {
         )));
         renderAssets(payload.assets || []);
       } catch (error) {
+        if (target?.local_only && /未找到该资产|not found/i.test(error.message)) {
+          writeAssetRecords(readAssetRecords().filter((item) => (
+            item.name !== name && (!target?.object_key || item.object_key !== target.object_key)
+          )));
+          await loadAssets();
+          window.alert(`该资产仅存在于本地缓存，已从本地列表移除：${name}`);
+          return;
+        }
         button.disabled = false;
         window.alert(error.message);
       }
