@@ -1684,6 +1684,7 @@ async function boot() {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   setError("");
+  if (chatInput.value.trim()) visualDescriptionInput.value = chatInput.value;
   setLoading(true);
   renderStoryHeader();
   resetStages();
@@ -1847,6 +1848,7 @@ const homeInspiration = document.querySelector("#homeInspiration");
 const homePromptInput = document.querySelector("#homePromptInput");
 const homeGenerateButton = document.querySelector("#homeGenerateButton");
 const chatMessages = document.querySelector("#chatMessages");
+const chatPanel = document.querySelector("#chatPanel");
 const chatInput = document.querySelector("#chatInput");
 const chatSendButton = document.querySelector("#chatSendButton");
 const newProjectButton = document.querySelector("#newProjectButton");
@@ -1856,6 +1858,14 @@ const homeInspirationMore = document.querySelector("#homeInspirationMore");
 const canvasZoomIn = document.querySelector("#canvasZoomIn");
 const canvasZoomOut = document.querySelector("#canvasZoomOut");
 const canvasFitButton = document.querySelector("#canvasFitButton");
+const nodeToolbar = document.querySelector("#nodeToolbar");
+const chatProjectPrompt = document.querySelector("#chatProjectPrompt");
+const chatScrollBottom = document.querySelector("#chatScrollBottom");
+const homeCampaignNameInput = document.querySelector("#homeCampaignNameInput");
+const homeCampaignSubtitleInput = document.querySelector("#homeCampaignSubtitleInput");
+const homeCampaignTimeInput = document.querySelector("#homeCampaignTimeInput");
+let homeInspirationFilter = "全部";
+let homeMaterialsCache = [];
 
 function relativeEditTime(iso) {
   if (!iso) return "";
@@ -1915,11 +1925,17 @@ async function loadProjects() {
 }
 
 function renderHomeInspiration(materials) {
-  if (!materials.length) {
+  homeMaterialsCache = materials || [];
+  const list = homeMaterialsCache.filter((material) => (
+    homeInspirationFilter === "全部"
+    || String(material.type || material.category || "").includes(homeInspirationFilter)
+    || String(material.title || "").includes(homeInspirationFilter)
+  ));
+  if (!list.length) {
     homeInspiration.innerHTML = `<div class="empty-state">暂无灵感素材</div>`;
     return;
   }
-  homeInspiration.innerHTML = materials.slice(0, 8).map((material) => `
+  homeInspiration.innerHTML = list.slice(0, 8).map((material) => `
     <figure class="inspiration-tile" data-material-number="${escapeHtml(material.number || "")}">
       <img src="${escapeHtml(material.image || "")}" alt="" loading="lazy" />
       <figcaption>${escapeHtml(material.title || material.number || "")}</figcaption>
@@ -1927,7 +1943,7 @@ function renderHomeInspiration(materials) {
   `).join("");
   homeInspiration.querySelectorAll("[data-material-number]").forEach((tile) => {
     tile.addEventListener("click", () => {
-      const material = materials.find((item) => item.number === tile.dataset.materialNumber);
+      const material = homeMaterialsCache.find((item) => item.number === tile.dataset.materialNumber);
       if (material) {
         activeMaterial = material;
         openMaterialDetail(material);
@@ -1961,6 +1977,9 @@ async function createProjectFromPrompt() {
     homePromptInput.focus();
     return;
   }
+  campaignNameInput.value = homeCampaignNameInput.value.trim();
+  campaignSubtitleInput.value = homeCampaignSubtitleInput.value.trim();
+  campaignTimeInput.value = homeCampaignTimeInput.value.trim();
   const response = await apiFetch("/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1977,6 +1996,7 @@ async function openCanvas(projectId, { prefillPrompt = "", autoGenerate = false 
   if (!response.ok) throw new Error(payload.error || "读取项目失败");
   currentProject = payload;
   selectedElementId = null;
+  chatPanel.classList.remove("hidden");
   showView("generate");
   renderCanvas();
   renderChatMessages(currentProject);
@@ -2054,6 +2074,8 @@ function fitCanvas() {
 function renderCanvas() {
   if (!currentProject) return;
   canvasProjectTitle.textContent = currentProject.title || "未命名项目";
+  chatProjectPrompt.textContent = currentProject.prompt || currentProject.title || "";
+  chatProjectPrompt.title = chatProjectPrompt.textContent;
   canvasToolbar.classList.remove("hidden");
   const elements = autoLayoutElements(currentProject.elements || []);
   canvasViewport.innerHTML = elements.map((element) => {
@@ -2084,6 +2106,20 @@ function renderCanvas() {
       });
     });
   });
+  if (selectedElementId) {
+    const element = elements.find((item) => item.id === selectedElementId);
+    if (element) {
+      nodeToolbar.classList.remove("hidden");
+      const x = canvasPan.x + element.clientX * canvasScale;
+      const y = canvasPan.y + element.clientY * canvasScale - 44;
+      nodeToolbar.style.left = `${Math.max(8, x)}px`;
+      nodeToolbar.style.top = `${Math.max(8, y)}px`;
+    } else {
+      nodeToolbar.classList.add("hidden");
+    }
+  } else {
+    nodeToolbar.classList.add("hidden");
+  }
 }
 
 let canvasPanning = false;
@@ -2114,6 +2150,59 @@ canvasWorkspace.addEventListener("wheel", (event) => {
   const factor = event.deltaY < 0 ? 1.1 : 0.9;
   setCanvasScale(Math.min(3, Math.max(0.1, canvasScale * factor)));
 }, { passive: false });
+
+nodeToolbar.querySelectorAll("[data-node-tool]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const tool = button.dataset.nodeTool;
+    if (tool === "deselect") {
+      selectedElementId = null;
+      renderCanvas();
+      return;
+    }
+    const element = (currentProject?.elements || []).find((item) => item.id === selectedElementId);
+    if (!element) return;
+    if (tool === "split") {
+      await splitCanvasElement(element).catch((error) => setError(error.message));
+    } else {
+      await handleNodeAction(tool, element).catch((error) => setError(error.message));
+    }
+  });
+});
+
+const canvasActionButtons = {
+  run: () => runButton.click(),
+  upload: () => uploadTrigger.click(),
+  style: () => stylePickerButton.click(),
+  size: () => sizePickerButton.click(),
+  expand: () => expandDescriptionButton.click(),
+  doudou: () => doudouIpButton.click(),
+  logo: () => includeLogoButton.click(),
+  search: () => includeSearchOverlayButton.click(),
+  "close-chat": () => chatPanel.classList.add("hidden"),
+};
+document.querySelectorAll("[data-action]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const fn = canvasActionButtons[button.dataset.action];
+    if (fn) fn();
+  });
+});
+
+document.querySelectorAll("[data-home-filter]").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    homeInspirationFilter = chip.dataset.homeFilter;
+    document.querySelectorAll("[data-home-filter]").forEach((c) => c.classList.toggle("active", c === chip));
+    renderHomeInspiration(homeMaterialsCache);
+  });
+});
+
+chatMessages.addEventListener("scroll", () => {
+  const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+  chatScrollBottom.classList.toggle("hidden", nearBottom);
+});
+
+chatScrollBottom.addEventListener("click", () => {
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+});
 
 async function handleNodeAction(action, element) {
   if (action === "open") {

@@ -2816,3 +2816,758 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ============ Figma Dark 主题（灵眸设计探索） ============ */
+html,
+body {
+  background: #1c1c1c;
+}
+
+.lovart-app {
+  background: #1c1c1c;
+  color: #ffffff;
+}
+
+.lovart-topbar {
+  border-bottom: 1px solid #2c2c2c;
+}
+
+.brand-logo {
+  height: 32px;
+  width: auto;
+  display: block;
+}
+
+.brand-mark,
+.hero-brand-mark {
+  background: #232323;
+  color: #fff;
+}
+
+.lovart-rail-pills {
+  background: #000000;
+  border: 0.5px solid #525252;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.lovart-rail .rail-item {
+  color: #ffffff;
+}
+
+.lovart-rail .rail-item img {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.lovart-rail .rail-item:hover,
+.lovart-rail .rail-item.active {
+  background: #232323;
+  color: #ffffff;
+}
+
+.lovart-create {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.lovart-create:hover {
+  background: #e5e7eb;
+}
+
+.admin-token-input {
+  background: #232323;
+  border: 1px solid #444444;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 7px 14px;
+  outline: none;
+}
+
+.admin-token-input::placeholder {
+  color: #777777;
+}
+
+/* 主页 */
+.home-page {
+  padding: 0;
+}
+
+.home-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 40px 96px;
+}
+
+.home-title {
+  font-size: 26px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 24px;
+}
+
+.home-prompt-card {
+  background: #232323;
+  border: 1px solid rgba(82, 82, 82, 0.36);
+  border-radius: 26px;
+  padding: 22px 26px 18px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.prompt-sentence {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.sentence-chip {
+  width: 128px;
+  background: transparent;
+  border: 1px solid rgba(82, 82, 82, 0.36);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.sentence-chip:focus {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+.sentence-chip::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.home-prompt-input {
+  width: 100%;
+  margin-top: 14px;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  font-family: inherit;
+}
+
+.home-prompt-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.home-prompt-input .accent,
+.prompt-hint .accent {
+  color: #14e1b9;
+}
+
+.prompt-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.home-generate-btn {
+  border: 0;
+  border-radius: 999px;
+  background: #0b8de9;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 24px;
+  cursor: pointer;
+}
+
+.home-generate-btn:hover {
+  background: #0a7cd0;
+}
+
+.home-section {
+  margin-top: 48px;
+}
+
+.home-section-head h2 {
+  color: #ffffff;
+}
+
+.text-link {
+  color: #919191;
+}
+
+.text-link .arrow {
+  margin-left: 2px;
+}
+
+.project-card {
+  background: #232323;
+  border: 1px solid #2f2f2f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.project-card:hover {
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
+}
+
+.project-card-thumb {
+  background: #000000;
+}
+
+.project-card-body h3 {
+  color: #ffffff;
+}
+
+.project-card-body p {
+  color: #919191;
+}
+
+.project-card-new {
+  border-color: #3a3a3a;
+  background: #1f1f1f;
+  color: #cfcfcf;
+}
+
+.project-card-new .plus-circle {
+  background: #2c2c2c;
+  color: #ffffff;
+}
+
+.inspiration-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.inspiration-filter {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 5px 14px;
+  cursor: pointer;
+}
+
+.inspiration-filter.active {
+  background: #1a1a1a;
+  border-color: #525252;
+}
+
+.inspiration-tile {
+  background: #232323;
+  border: 1px solid #2f2f2f;
+}
+
+.inspiration-tile figcaption {
+  color: #cfcfcf;
+}
+
+.empty-state {
+  color: #777777;
+}
+
+/* 项目页 */
+.projects-head h1 {
+  color: #ffffff;
+}
+
+.primary-btn {
+  background: #ffffff;
+  color: #000000;
+}
+
+.primary-btn:hover {
+  background: #e5e7eb;
+}
+
+/* 画布 */
+.canvas-layout {
+  min-height: calc(100vh - 64px);
+}
+
+.canvas-project-title {
+  color: #ffffff;
+}
+
+.canvas-zoom {
+  background: #232323;
+  border-color: #444444;
+  color: #cfcfcf;
+}
+
+.canvas-zoom button,
+.canvas-tool-btn {
+  color: #ffffff;
+}
+
+.canvas-workspace {
+  background: #1c1c1c;
+  border: 1px solid #2c2c2c;
+  background-image: radial-gradient(circle, #333333 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.canvas-empty {
+  color: #555555;
+}
+
+.canvas-node {
+  background: #232323;
+  border: 1px solid #000000;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.canvas-node.selected {
+  outline: 2px solid #14e1b9;
+}
+
+.canvas-node-label {
+  color: #cfcfcf;
+  border-top-color: #333333;
+}
+
+.canvas-node-actions {
+  background: #1f1f1f;
+  border-top-color: #333333;
+}
+
+.canvas-node-actions button {
+  border-color: #3a3a3a;
+  background: #232323;
+  color: #ffffff;
+}
+
+.canvas-node-actions button:hover {
+  background: #2c2c2c;
+}
+
+.node-toolbar {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 2px;
+}
+
+.node-toolbar button {
+  border: 0;
+  background: transparent;
+  color: #000000;
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.node-toolbar button:hover {
+  background: #f3f4f6;
+}
+
+.node-toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: #000000;
+  opacity: 0.15;
+  margin: 0 4px;
+}
+
+.node-toolbar-close {
+  font-size: 16px !important;
+  padding: 5px 8px !important;
+}
+
+.canvas-bottom-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #2c2c2c;
+  border: 1px solid #000000;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  padding: 7px 10px;
+}
+
+.canvas-bottom-toolbar button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.canvas-bottom-toolbar button:hover {
+  background: #3a3a3a;
+}
+
+.canvas-bottom-toolbar .ctb-primary {
+  background: #0b8de9;
+}
+
+.canvas-bottom-toolbar .ctb-primary:hover {
+  background: #0a7cd0;
+}
+
+.canvas-bottom-toolbar .ctb-divider {
+  width: 1px;
+  height: 24px;
+  background: #ffffff;
+  opacity: 0.25;
+  margin: 0 6px;
+}
+
+.canvas-bottom-toolbar .ctb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e74c3c;
+  margin: 0 2px;
+}
+
+/* 对话面板 */
+.chat-panel {
+  background: #2c2c2c;
+  border: 1px solid #3a3a3a;
+}
+
+.chat-head {
+  border-bottom: 1px solid #444444;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chat-project-prompt {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.chat-head-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.chat-head-actions button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.chat-head-actions button:hover {
+  background: #3a3a3a;
+}
+
+.chat-messages {
+  position: relative;
+}
+
+.chat-msg.user {
+  background: #0b8de9;
+  color: #ffffff;
+}
+
+.chat-msg.assistant {
+  background: #000000;
+  color: #ffffff;
+}
+
+.chat-empty {
+  color: #888888;
+}
+
+.chat-scroll-bottom {
+  position: absolute;
+  right: 16px;
+  bottom: 150px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid #000000;
+  background: #ffffff;
+  color: #000000;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+.chat-composer {
+  background: #2c2c2c;
+  border: 1px solid #444444;
+  border-radius: 24px;
+  margin: 0 8px 10px;
+  padding: 12px 14px;
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.composer-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #14e1b9, #005aff);
+  flex-shrink: 0;
+}
+
+.composer-row textarea {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  padding: 4px 0;
+}
+
+.composer-row textarea::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.composer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.meta-chip {
+  width: 108px;
+  background: transparent;
+  border: 1px solid #525252;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  padding: 3px 7px;
+  outline: none;
+}
+
+.meta-chip:focus {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.composer-tools button {
+  border: 1px solid #525252;
+  background: transparent;
+  color: #ffffff;
+  font-size: 12px;
+  border-radius: 9px;
+  height: 30px;
+  padding: 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.composer-tools button:hover {
+  background: #3a3a3a;
+}
+
+.composer-spacer {
+  flex: 1;
+}
+
+.composer-tools .composer-send {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: #0b8de9;
+  color: #ffffff;
+  font-size: 15px;
+}
+
+/* 生成功能条（原 prompt-dock 精简为深色工具条） */
+.generate-page .prompt-stack {
+  margin-top: 12px;
+}
+
+.prompt-dock {
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  border-radius: 16px;
+  padding: 8px 12px;
+}
+
+.prompt-dock .text-wrap {
+  display: none;
+}
+
+.prompt-dock .reference-strip {
+  margin-bottom: 6px;
+}
+
+.dock-tools {
+  flex-wrap: wrap;
+}
+
+.dock-tools .tool-button {
+  border: 1px solid #525252;
+  background: transparent;
+  color: #ffffff;
+  border-radius: 9px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.dock-tools .tool-button:hover {
+  background: #3a3a3a;
+}
+
+.send-button {
+  background: #0b8de9;
+  border: 0;
+  border-radius: 50%;
+}
+
+.send-button img {
+  filter: invert(1);
+}
+
+/* 生成过程 / 结果 */
+.generation-story {
+  color: #ffffff;
+}
+
+.generation-story h1 {
+  color: #ffffff;
+}
+
+.stage-accordions summary,
+.stage-accordions details {
+  background: #232323;
+  color: #ffffff;
+  border-color: #3a3a3a;
+}
+
+.generated-result {
+  background: #232323;
+  border: 1px solid #3a3a3a;
+}
+
+/* 风格 / 灵感 / 素材页深色 */
+.page-content h1,
+.page-content h2 {
+  color: #ffffff;
+}
+
+.style-card-grid .style-card,
+.material-masonry .material-card,
+.inspiration-masonry .inspiration-card {
+  background: #232323;
+  border-color: #3a3a3a;
+  color: #ffffff;
+}
+
+.tab-button,
+.material-tab-list .tab-button {
+  color: #cfcfcf;
+}
+
+.tab-button.active,
+.material-tab-list .tab-button.active {
+  background: #1a1a1a;
+  border-color: #525252;
+  color: #ffffff;
+}
+
+.inspiration-search input,
+.material-filter-bar select {
+  background: #232323;
+  border: 1px solid #444444;
+  color: #ffffff;
+}
+
+.inspiration-search input::placeholder {
+  color: #777777;
+}
+
+.detail-card {
+  background: #232323;
+  color: #ffffff;
+  border: 1px solid #3a3a3a;
+}
+
+.detail-info strong,
+.detail-info h2 {
+  color: #ffffff;
+}
+
+.detail-info p {
+  color: #cfcfcf;
+}
+
+.close-round,
+.modal-scrim {
+  color: #ffffff;
+}
+
+.material-action-button.secondary {
+  background: #2c2c2c;
+  border: 1px solid #525252;
+  color: #ffffff;
+}
+
+.material-action-button.primary {
+  background: #0b8de9;
+  color: #ffffff;
+}
+
+.style-picker {
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  color: #ffffff;
+}
+
+.floating-picker {
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  color: #ffffff;
+}
+
+.floating-picker button {
+  color: #ffffff;
+}

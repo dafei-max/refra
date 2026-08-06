@@ -11,19 +11,18 @@
       <nav class="lovart-rail" aria-label="主导航">
         <button type="button" class="rail-item lovart-create" id="newProjectButton" data-view-target="generate" title="新建项目">+</button>
         <div class="lovart-rail-pills">
-          <button type="button" class="rail-item active" data-view-target="home" id="homeButton" title="主页">⌂</button>
-          <button type="button" class="rail-item" data-view-target="assets" id="assetsButton" title="项目">▤</button>
-          <button type="button" class="rail-item" data-view-target="generate" id="generateButton" title="画布">◇</button>
-          <button type="button" class="rail-item" data-view-target="styles" id="styleButton" title="风格">✦</button>
-          <button type="button" class="rail-item" data-view-target="materials" id="libraryButton" title="灵感">☀</button>
+          <button type="button" class="rail-item active" data-view-target="home" id="homeButton" title="主页"><img src="/ui-assets/icon/nav-generate.png" alt="" /></button>
+          <button type="button" class="rail-item" data-view-target="assets" id="assetsButton" title="项目"><img src="/ui-assets/icon/nav-projects.png" alt="" /></button>
+          <button type="button" class="rail-item" data-view-target="generate" id="generateButton" title="画布"><img src="/ui-assets/icon/nav-generate.png" alt="" /></button>
+          <button type="button" class="rail-item" data-view-target="styles" id="styleButton" title="风格"><img src="/ui-assets/icon/nav-style.png" alt="" /></button>
+          <button type="button" class="rail-item" data-view-target="materials" id="libraryButton" title="灵感"><img src="/ui-assets/icon/nav-inspiration.png" alt="" /></button>
         </div>
       </nav>
 
       <main class="lovart-main">
         <header class="lovart-topbar">
           <div class="lovart-brand">
-            <div class="brand-mark">A</div>
-            <span>Aeye KV Studio</span>
+            <img src="/ui-assets/logo.png" alt="灵眸设计探索" class="brand-logo" />
           </div>
           <input
             id="adminTokenInput"
@@ -37,26 +36,45 @@
 
         <section id="homePage" class="neo-page home-page active">
           <div class="home-wrap">
-            <div class="hero">
-              <div class="hero-brand-mark">A</div>
-              <h1>Aeye 让设计更简单</h1>
-              <p class="hero-sub">输入想法即可生成，帮你完成一切</p>
-              <div class="hero-search">
-                <input id="homePromptInput" type="text" placeholder="描述你想生成的画面，回车或点击生成..." autocomplete="off" />
-                <button id="homeGenerateButton" class="hero-generate-btn" type="button">生成</button>
+            <div class="home-title">今天想创作什么？</div>
+            <div class="home-prompt-card">
+              <div class="prompt-sentence">
+                <span>主标题为</span>
+                <input id="homeCampaignNameInput" class="sentence-chip" placeholder="活动名称（选填）" autocomplete="off" />
+                <span>，副标题为</span>
+                <input id="homeCampaignSubtitleInput" class="sentence-chip" placeholder="活动副标题（选填）" autocomplete="off" />
+                <span>，活动时间为</span>
+                <input id="homeCampaignTimeInput" class="sentence-chip" placeholder="活动时间（选填）" autocomplete="off" />
+              </div>
+              <textarea
+                id="homePromptInput"
+                class="home-prompt-input"
+                rows="2"
+                placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。"
+                autocomplete="off"
+              ></textarea>
+              <div class="prompt-tools">
+                <button id="homeGenerateButton" type="button" class="home-generate-btn">生成</button>
               </div>
             </div>
             <div class="home-section">
               <div class="home-section-head">
                 <h2>最近项目</h2>
-                <button id="recentProjectsMore" type="button" class="text-link">查看全部 →</button>
+                <button id="recentProjectsMore" type="button" class="text-link">查看全部 <span class="arrow">→</span></button>
               </div>
               <div id="recentProjects" class="project-grid empty-state">加载中...</div>
             </div>
             <div class="home-section">
               <div class="home-section-head">
                 <h2>灵感发现</h2>
-                <button id="homeInspirationMore" type="button" class="text-link">查看全部 →</button>
+                <button id="homeInspirationMore" type="button" class="text-link">查看全部 <span class="arrow">→</span></button>
+              </div>
+              <div class="inspiration-filters">
+                <button type="button" class="inspiration-filter active" data-home-filter="全部">全部</button>
+                <button type="button" class="inspiration-filter" data-home-filter="字体">字体</button>
+                <button type="button" class="inspiration-filter" data-home-filter="构图">构图</button>
+                <button type="button" class="inspiration-filter" data-home-filter="风格">风格</button>
+                <button type="button" class="inspiration-filter" data-home-filter="元素">元素</button>
               </div>
               <div id="homeInspiration" class="material-masonry empty-state">加载中...</div>
             </div>
@@ -80,6 +98,26 @@
               <div id="canvasWorkspace" class="canvas-workspace">
                 <div id="canvasViewport" class="canvas-viewport"></div>
                 <div id="canvasEmpty" class="canvas-empty">生成结果会展示在这里，可拖动画布、滚轮缩放</div>
+                <div id="nodeToolbar" class="node-toolbar hidden">
+                  <button type="button" data-node-tool="open">放大</button>
+                  <button type="button" data-node-tool="split">拆分图层</button>
+                  <button type="button" data-node-tool="download">下载</button>
+                  <button type="button" data-node-tool="delete">删除</button>
+                  <span class="node-toolbar-divider"></span>
+                  <button type="button" data-node-tool="deselect" class="node-toolbar-close" title="取消选中">×</button>
+                </div>
+                <div class="canvas-bottom-toolbar">
+                  <button type="button" class="ctb-primary" data-action="run" title="生成">➤</button>
+                  <button type="button" data-action="upload" title="上传图片">＋</button>
+                  <button type="button" data-action="style" title="风格预设">🎨</button>
+                  <button type="button" data-action="size" title="尺寸">▭</button>
+                  <button type="button" data-action="expand" title="扩写">✦</button>
+                  <span class="ctb-divider"></span>
+                  <button type="button" data-action="doudou" title="兜兜IP">🐰</button>
+                  <button type="button" data-action="logo" title="左上角 Logo">L</button>
+                  <button type="button" data-action="search" title="右下角搜索框">⌕</button>
+                  <span class="ctb-dot"></span>
+                </div>
               </div>
 
               <section id="generationStory" class="generation-story hidden">
@@ -91,12 +129,6 @@
               </section>
 
               <div class="prompt-stack">
-                <div class="brief-top-row">
-                  <input id="campaignNameInput" class="title-input" form="briefForm" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
-                  <input id="campaignSubtitleInput" class="subtitle-input" form="briefForm" name="campaign_subtitle" placeholder="副标题" autocomplete="off" />
-                  <input id="campaignTimeInput" class="time-input" form="briefForm" name="campaign_time" placeholder="活动时间" autocomplete="off" />
-                </div>
-
                 <form id="briefForm" class="prompt-dock" enctype="multipart/form-data">
                   <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
                   <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
@@ -130,13 +162,36 @@
             </div>
 
             <aside id="chatPanel" class="chat-panel">
-              <div class="chat-head">设计对话</div>
+              <div class="chat-head">
+                <span id="chatProjectPrompt" class="chat-project-prompt"></span>
+                <div class="chat-head-actions">
+                  <button type="button" title="项目信息">i</button>
+                  <button type="button" title="更多">⋯</button>
+                  <button type="button" title="关闭" data-action="close-chat">×</button>
+                </div>
+              </div>
               <div id="chatMessages" class="chat-messages">
                 <div class="chat-empty">输入想法可基于当前画布继续生成新变体；选中画布中的图后，可针对该图直接修改。</div>
               </div>
-              <div class="chat-input-row">
-                <textarea id="chatInput" rows="2" placeholder="继续提问..." autocomplete="off"></textarea>
-                <button id="chatSendButton" type="button" title="发送">↑</button>
+              <button id="chatScrollBottom" type="button" class="chat-scroll-bottom hidden" title="回到底部">↓</button>
+              <div class="chat-composer">
+                <div class="composer-row">
+                  <div class="composer-avatar"></div>
+                  <textarea id="chatInput" rows="2" placeholder="今天我们要创作什么" autocomplete="off"></textarea>
+                </div>
+                <div class="composer-meta">
+                  <input id="campaignNameInput" class="meta-chip" form="briefForm" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
+                  <input id="campaignSubtitleInput" class="meta-chip" form="briefForm" name="campaign_subtitle" placeholder="副标题" autocomplete="off" />
+                  <input id="campaignTimeInput" class="meta-chip" form="briefForm" name="campaign_time" placeholder="活动时间" autocomplete="off" />
+                </div>
+                <div class="composer-tools">
+                  <button type="button" data-action="upload" title="上传图片">上传图片</button>
+                  <button type="button" data-action="style" title="风格预设">风格预设</button>
+                  <button type="button" data-action="size" title="尺寸"><span>3:4</span></button>
+                  <button type="button" data-action="expand" title="扩写">扩写</button>
+                  <span class="composer-spacer"></span>
+                  <button id="chatSendButton" type="button" class="composer-send" title="发送">↑</button>
+                </div>
               </div>
             </aside>
           </div>
