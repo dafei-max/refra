@@ -9,6 +9,7 @@ node_modules/
 outputs/*
 !outputs/.gitkeep
 data/assets.json
+data/projects.json
 uploads/references/*
 !uploads/references/.gitkeep
 archives/
