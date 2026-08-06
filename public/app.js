@@ -812,11 +812,12 @@ async function runStream(data) {
   const response = await apiFetch("/api/run-stream", { method: "POST", body: data });
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || "链路运行失败");
+    throw new Error(payload.error || `链路运行失败（HTTP ${response.status}）`);
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let completed = false;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -830,9 +831,14 @@ async function runStream(data) {
         if (line.startsWith("event: ")) event = line.slice(7).trim();
         if (line.startsWith("data: ")) dataLine += line.slice(6);
       }
-      if (dataLine) applyStage(event, JSON.parse(dataLine));
+      if (dataLine) {
+        const parsed = JSON.parse(dataLine);
+        if (event === "complete") completed = true;
+        applyStage(event, parsed);
+      }
     }
   }
+  if (!completed) throw new Error("链路中断：服务端未返回完成事件（可能超时或实例被回收）");
 }
 
 async function expandDescription() {
