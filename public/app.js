@@ -2170,8 +2170,9 @@ const canvasActionButtons = {
   run: () => form.requestSubmit(),
   upload: () => uploadTrigger.click(),
   style: () => stylePickerButton.click(),
-  size: () => {
-    const rect = sizePickerButton.getBoundingClientRect();
+  size: (event) => {
+    const anchor = event?.currentTarget || sizePickerButton;
+    const rect = anchor.getBoundingClientRect();
     sizePopover.style.left = `${Math.max(8, rect.left)}px`;
     sizePopover.style.top = `${Math.max(8, rect.top - sizePopover.offsetHeight - 8)}px`;
     sizePopover.style.position = "fixed";
@@ -2184,9 +2185,9 @@ const canvasActionButtons = {
   "close-chat": () => chatPanel.classList.add("hidden"),
 };
 document.querySelectorAll("[data-action]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
     const fn = canvasActionButtons[button.dataset.action];
-    if (fn) fn();
+    if (fn) fn(event);
   });
 });
 

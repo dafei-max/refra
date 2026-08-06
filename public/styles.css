@@ -2330,6 +2330,8 @@ button:disabled {
 /* ============ 主页 ============ */
 .home-page {
   padding: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 .home-wrap {
@@ -2976,13 +2978,17 @@ body {
 
 .home-generate-btn {
   border: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   background: #0b8de9;
   color: #ffffff;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
-  padding: 8px 24px;
+  width: 40px;
+  height: 40px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .home-generate-btn:hover {
@@ -3109,7 +3115,7 @@ body {
 .canvas-workspace {
   background: #1c1c1c;
   border: 1px solid #2c2c2c;
-  background-image: radial-gradient(circle, #333333 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -3291,13 +3297,14 @@ body {
 }
 
 .chat-msg.user {
-  background: #0b8de9;
+  background: #232323;
   color: #ffffff;
 }
 
 .chat-msg.assistant {
-  background: #000000;
+  background: transparent;
   color: #ffffff;
+  padding: 0;
 }
 
 .chat-empty {
@@ -3340,6 +3347,13 @@ body {
   border-radius: 12px;
   background: linear-gradient(135deg, #14e1b9, #005aff);
   flex-shrink: 0;
+  border: 0;
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .composer-row textarea {
@@ -3701,12 +3715,12 @@ body {
 }
 
 .chat-msg-image {
-  padding: 4px;
+  padding: 0;
   max-width: 100%;
 }
 
 .chat-msg-image img {
   width: 100%;
   display: block;
-  border-radius: 8px;
+  border-radius: 12px;
 }

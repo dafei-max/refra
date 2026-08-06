@@ -60,7 +60,7 @@
                   <button type="button" class="prompt-tool-chip" data-action="expand" title="扩写">扩写</button>
                 </div>
                 <button type="button" class="notification-bell" title="通知">✦</button>
-                <button id="homeGenerateButton" type="button" class="home-generate-btn">生成</button>
+                <button id="homeGenerateButton" type="button" class="home-generate-btn" title="生成">➤</button>
               </div>
             </div>
             <div class="home-section">
@@ -105,10 +105,9 @@
                 <div id="canvasViewport" class="canvas-viewport"></div>
                 <div id="canvasEmpty" class="canvas-empty">生成结果会展示在这里，可拖动画布、滚轮缩放</div>
                 <div id="nodeToolbar" class="node-toolbar hidden">
-                  <button type="button" data-node-tool="open">放大</button>
+                  <button type="button" data-node-tool="open">HD 放大</button>
                   <button type="button" data-node-tool="split">拆分图层</button>
                   <button type="button" data-node-tool="download">下载</button>
-                  <button type="button" data-node-tool="delete">删除</button>
                   <span class="node-toolbar-divider"></span>
                   <button type="button" data-node-tool="deselect" class="node-toolbar-close" title="取消选中">×</button>
                 </div>
@@ -151,16 +150,11 @@
               <div class="chat-composer">
                 <div id="referenceStrip" class="reference-strip hidden"></div>
                 <div class="composer-row">
-                  <div class="composer-avatar"></div>
+                  <button type="button" class="composer-avatar" data-action="upload" title="上传参考图">＋</button>
                   <div class="composer-input-wrap">
                     <textarea id="chatInput" rows="2" placeholder="今天我们要创作什么" autocomplete="off"></textarea>
                     <div id="mentionMenu" class="mention-menu hidden"></div>
                   </div>
-                </div>
-                <div class="composer-meta">
-                  <input id="campaignNameInput" class="meta-chip" form="briefForm" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
-                  <input id="campaignSubtitleInput" class="meta-chip" form="briefForm" name="campaign_subtitle" placeholder="副标题" autocomplete="off" />
-                  <input id="campaignTimeInput" class="meta-chip" form="briefForm" name="campaign_time" placeholder="活动时间" autocomplete="off" />
                 </div>
                 <div class="composer-tools">
                   <button type="button" data-action="upload" title="上传图片">上传图片</button>
@@ -330,6 +324,9 @@
     <form id="materialForm" class="hidden"></form>
     <form id="xlsxForm" class="hidden"></form>
     <form id="briefForm" class="hidden" enctype="multipart/form-data" novalidate>
+      <input id="campaignNameInput" type="hidden" name="campaign_name" value="" />
+      <input id="campaignSubtitleInput" type="hidden" name="campaign_subtitle" value="" />
+      <input id="campaignTimeInput" type="hidden" name="campaign_time" value="" />
       <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
       <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
       <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
