@@ -307,9 +307,11 @@ function syncStylePickerButton() {
   const current = stylePresetInput.value || "none";
   const preset = allStylePresets.find((item) => item.id === current);
   const isPreset = preset && preset.id !== "none";
-  stylePickerIcon.src = isPreset && preset.thumbnail ? preset.thumbnail : "/ui-assets/fengge.png";
-  stylePickerIcon.alt = isPreset ? preset.name : "";
-  stylePickerIcon.classList.toggle("preset-thumb", Boolean(isPreset && preset.thumbnail));
+  if (stylePickerIcon) {
+    stylePickerIcon.src = isPreset && preset.thumbnail ? preset.thumbnail : "/ui-assets/fengge.png";
+    stylePickerIcon.alt = isPreset ? preset.name : "";
+    stylePickerIcon.classList.toggle("preset-thumb", Boolean(isPreset && preset.thumbnail));
+  }
   stylePickerLabel.textContent = isPreset ? styleNameShort(preset.name) : "风格预设";
 }
 
@@ -919,10 +921,13 @@ async function runStream(data) {
 
 async function expandDescription() {
   if (isExpandingDescription) return;
-  const source = visualDescriptionInput.value.trim();
+  const homePageEl = document.querySelector("#homePage");
+  const usingHome = Boolean(homePageEl?.classList.contains("active"));
+  const sourceInput = usingHome ? homePromptInput : visualDescriptionInput;
+  const source = sourceInput.value.trim();
   if (!source) {
     setError("先写一句画面描述，再扩写。");
-    visualDescriptionInput.focus();
+    sourceInput.focus();
     return;
   }
   setError("");
@@ -948,10 +953,10 @@ async function expandDescription() {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "扩写失败");
-    visualDescriptionInput.value = result.expanded_description || source;
-    autoResizeDescription();
-    visualDescriptionInput.focus();
-    visualDescriptionInput.setSelectionRange(visualDescriptionInput.value.length, visualDescriptionInput.value.length);
+    sourceInput.value = result.expanded_description || source;
+    if (!usingHome) autoResizeDescription();
+    sourceInput.focus();
+    sourceInput.setSelectionRange(sourceInput.value.length, sourceInput.value.length);
     renderMentionMenu();
     if (result.warning) setError(result.warning);
   } catch (error) {
@@ -1759,7 +1764,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !stylePresetSection.classList.contains("hidden")) closeStylePresetModal();
 });
 
-generateButton.addEventListener("click", () => showView("generate"));
+if (generateButton) generateButton.addEventListener("click", () => showView("generate"));
 assetsButton.addEventListener("click", () => {
   showView("assets");
   loadProjects().catch((error) => {
@@ -1906,6 +1911,9 @@ async function fetchProjects() {
 
 function renderProjectsInto(container, projects, { withNewCard = false } = {}) {
   const cards = [...(withNewCard ? [newProjectCardHtml()] : []), ...projects.map(projectCardHtml)];
+  while (cards.length < 5) {
+    cards.push(`<div class="project-card project-card-empty" data-new-project><div class="project-card-thumb"></div><div class="project-card-body"><h3>示例项目</h3><p>—</p></div></div>`);
+  }
   container.classList.remove("empty-state");
   container.innerHTML = cards.length ? cards.join("") : `<div class="empty-state">暂无项目</div>`;
   if (withNewCard) {
@@ -2080,13 +2088,9 @@ function renderCanvas() {
   const elements = autoLayoutElements(currentProject.elements || []);
   canvasViewport.innerHTML = elements.map((element) => {
     const selected = element.id === selectedElementId ? " selected" : "";
-    const actions = element.kind === "kv"
-      ? `<button data-node-action="open">放大</button><button data-node-action="download">下载</button><button data-node-action="regenerate">重新生成</button><button data-node-action="split">拆分</button><button data-node-action="delete">删除</button>`
-      : `<button data-node-action="open">放大</button><button data-node-action="download">下载</button><button data-node-action="delete">删除</button>`;
     return `<div class="canvas-node${selected}" data-element-id="${escapeHtml(element.id)}" style="left:${element.clientX}px;top:${element.clientY}px">
       <img src="${escapeHtml(element.url || "")}" alt="${escapeHtml(element.name || "")}" />
       <div class="canvas-node-label"><span>${elementKindLabel(element.kind)}</span><span>${escapeHtml(element.name || "")}</span></div>
-      <div class="canvas-node-actions">${actions}</div>
     </div>`;
   }).join("");
   applyCanvasTransform();
@@ -2097,13 +2101,6 @@ function renderCanvas() {
       if (event.target.closest("[data-node-action]")) return;
       selectedElementId = node.dataset.elementId;
       renderCanvas();
-    });
-    node.querySelectorAll("[data-node-action]").forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const element = (currentProject.elements || []).find((item) => item.id === node.dataset.elementId);
-        if (element) handleNodeAction(button.dataset.nodeAction, element).catch((error) => setError(error.message));
-      });
     });
   });
   if (selectedElementId) {
@@ -2170,10 +2167,16 @@ nodeToolbar.querySelectorAll("[data-node-tool]").forEach((button) => {
 });
 
 const canvasActionButtons = {
-  run: () => runButton.click(),
+  run: () => form.requestSubmit(),
   upload: () => uploadTrigger.click(),
   style: () => stylePickerButton.click(),
-  size: () => sizePickerButton.click(),
+  size: () => {
+    const rect = sizePickerButton.getBoundingClientRect();
+    sizePopover.style.left = `${Math.max(8, rect.left)}px`;
+    sizePopover.style.top = `${Math.max(8, rect.top - sizePopover.offsetHeight - 8)}px`;
+    sizePopover.style.position = "fixed";
+    sizePickerButton.click();
+  },
   expand: () => expandDescriptionButton.click(),
   doudou: () => doudouIpButton.click(),
   logo: () => includeLogoButton.click(),
@@ -2240,17 +2243,56 @@ async function handleNodeAction(action, element) {
 function appendChatMessage(role, content) {
   const empty = chatMessages.querySelector(".chat-empty");
   if (empty) empty.remove();
+  const wrap = document.createElement("div");
+  wrap.className = `chat-msg-wrap ${role}`;
   const div = document.createElement("div");
   div.className = `chat-msg ${role}`;
   div.textContent = content;
-  chatMessages.appendChild(div);
+  const date = document.createElement("div");
+  date.className = "chat-msg-date";
+  date.textContent = formatMessageDate(new Date().toISOString());
+  wrap.append(div, date);
+  chatMessages.appendChild(wrap);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function formatMessageDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString("zh-CN", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+function appendChatImage(url, name) {
+  const empty = chatMessages.querySelector(".chat-empty");
+  if (empty) empty.remove();
+  const wrap = document.createElement("div");
+  wrap.className = "chat-msg-wrap assistant";
+  const div = document.createElement("div");
+  div.className = "chat-msg assistant chat-msg-image";
+  const img = document.createElement("img");
+  img.src = url;
+  img.alt = name || "";
+  img.loading = "lazy";
+  div.appendChild(img);
+  const date = document.createElement("div");
+  date.className = "chat-msg-date";
+  date.textContent = formatMessageDate(new Date().toISOString());
+  wrap.append(div, date);
+  chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function renderChatMessages(project) {
   const messages = project.messages || [];
   chatMessages.innerHTML = messages.length
-    ? messages.map((message) => `<div class="chat-msg ${message.role === "user" ? "user" : "assistant"}">${escapeHtml(message.content)}</div>`).join("")
+    ? messages.map((message) => `
+        <div class="chat-msg-wrap ${message.role === "user" ? "user" : "assistant"}">
+          <div class="chat-msg ${message.role === "user" ? "user" : "assistant"}">${escapeHtml(message.content)}</div>
+          <div class="chat-msg-date">${formatMessageDate(message.created_at)}</div>
+        </div>
+      `).join("")
     : `<div class="chat-empty">输入想法可基于当前画布继续生成新变体；选中画布中的图后，可针对该图直接修改。</div>`;
 }
 
@@ -2293,6 +2335,8 @@ async function runVariantGeneration(prompt, userText) {
     };
     await runStream(request);
     await refreshProject();
+    const kv = (currentProject.elements || []).filter((element) => element.kind === "kv").pop();
+    if (kv?.url) appendChatImage(kv.url, kv.name);
     appendChatMessage("assistant", "已生成新变体，可在画布中查看。");
   } catch (error) {
     appendChatMessage("assistant", `生成失败：${error.message}`);
@@ -2313,6 +2357,8 @@ async function runElementEdit(elementId, instruction) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "修改失败");
     await refreshProject();
+    const kv = (currentProject.elements || []).filter((element) => element.kind === "kv").pop();
+    if (kv?.url) appendChatImage(kv.url, kv.name);
     appendChatMessage("assistant", "已基于你的要求生成修改版本，可在画布中查看。");
   } catch (error) {
     appendChatMessage("assistant", `修改失败：${error.message}`);

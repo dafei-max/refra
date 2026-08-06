@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "ali-oss": "^6.23.0"
+    "ali-oss": "^6.23.0",
+    "dotenv": "^17.4.2"
   },
   "scripts": {
     "export:materials": "python3 tools/export_materials.py",

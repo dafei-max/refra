@@ -11,11 +11,10 @@
       <nav class="lovart-rail" aria-label="主导航">
         <button type="button" class="rail-item lovart-create" id="newProjectButton" data-view-target="generate" title="新建项目">+</button>
         <div class="lovart-rail-pills">
-          <button type="button" class="rail-item active" data-view-target="home" id="homeButton" title="主页"><img src="/ui-assets/icon/nav-generate.png" alt="" /></button>
-          <button type="button" class="rail-item" data-view-target="assets" id="assetsButton" title="项目"><img src="/ui-assets/icon/nav-projects.png" alt="" /></button>
-          <button type="button" class="rail-item" data-view-target="generate" id="generateButton" title="画布"><img src="/ui-assets/icon/nav-generate.png" alt="" /></button>
-          <button type="button" class="rail-item" data-view-target="styles" id="styleButton" title="风格"><img src="/ui-assets/icon/nav-style.png" alt="" /></button>
-          <button type="button" class="rail-item" data-view-target="materials" id="libraryButton" title="灵感"><img src="/ui-assets/icon/nav-inspiration.png" alt="" /></button>
+          <button type="button" class="rail-item active" data-view-target="home" id="homeButton" title="生成"><img src="/ui-assets/icon/nav-generate.png" alt="" /><span>生成</span></button>
+          <button type="button" class="rail-item" data-view-target="assets" id="assetsButton" title="项目"><img src="/ui-assets/icon/nav-projects.png" alt="" /><span>项目</span></button>
+          <button type="button" class="rail-item" data-view-target="styles" id="styleButton" title="风格"><img src="/ui-assets/icon/nav-style.png" alt="" /><span>风格</span></button>
+          <button type="button" class="rail-item" data-view-target="materials" id="libraryButton" title="灵感"><img src="/ui-assets/icon/nav-inspiration.png" alt="" /><span>灵感</span></button>
         </div>
       </nav>
 
@@ -54,6 +53,13 @@
                 autocomplete="off"
               ></textarea>
               <div class="prompt-tools">
+                <div class="prompt-tool-chips">
+                  <button type="button" class="prompt-tool-chip" data-action="upload" title="上传图片">上传图片</button>
+                  <button type="button" class="prompt-tool-chip" data-action="style" title="风格预设">风格预设</button>
+                  <button type="button" class="prompt-tool-chip" data-action="size" title="尺寸"><span>3:4</span></button>
+                  <button type="button" class="prompt-tool-chip" data-action="expand" title="扩写">扩写</button>
+                </div>
+                <button type="button" class="notification-bell" title="通知">✦</button>
                 <button id="homeGenerateButton" type="button" class="home-generate-btn">生成</button>
               </div>
             </div>
@@ -108,14 +114,14 @@
                 </div>
                 <div class="canvas-bottom-toolbar">
                   <button type="button" class="ctb-primary" data-action="run" title="生成">➤</button>
-                  <button type="button" data-action="upload" title="上传图片">＋</button>
-                  <button type="button" data-action="style" title="风格预设">🎨</button>
-                  <button type="button" data-action="size" title="尺寸">▭</button>
-                  <button type="button" data-action="expand" title="扩写">✦</button>
+                  <button type="button" id="uploadTrigger" title="上传图片">＋</button>
+                  <button type="button" id="stylePickerButton" title="风格预设">🎨<span id="stylePickerLabel" class="ctb-label">风格预设</span></button>
+                  <button type="button" id="sizePickerButton" title="尺寸"><span id="sizeIcon" class="size-icon ratio-34"></span><span id="sizeText">3:4</span></button>
+                  <button type="button" id="expandDescriptionButton" title="扩写">✦<span class="ctb-label">扩写</span></button>
                   <span class="ctb-divider"></span>
-                  <button type="button" data-action="doudou" title="兜兜IP">🐰</button>
-                  <button type="button" data-action="logo" title="左上角 Logo">L</button>
-                  <button type="button" data-action="search" title="右下角搜索框">⌕</button>
+                  <button type="button" id="doudouIpButton" class="doudou-toggle" aria-pressed="false" title="兜兜IP">🐰</button>
+                  <button type="button" id="includeLogoButton" class="overlay-toggle" aria-pressed="false" title="左上角 Logo">L</button>
+                  <button type="button" id="includeSearchOverlayButton" class="overlay-toggle" aria-pressed="false" title="右下角搜索框">⌕</button>
                   <span class="ctb-dot"></span>
                 </div>
               </div>
@@ -127,38 +133,6 @@
                 <div id="stageAccordions" class="stage-accordions"></div>
                 <div id="resultView" class="generated-result empty-state">等待生成结果</div>
               </section>
-
-              <div class="prompt-stack">
-                <form id="briefForm" class="prompt-dock" enctype="multipart/form-data">
-                  <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
-                  <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
-                  <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
-                  <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
-                  <input name="generate_image" type="checkbox" checked hidden />
-                  <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
-
-                  <div id="sizePopover" class="floating-picker size-picker hidden"></div>
-                  <div id="referenceStrip" class="reference-strip hidden"></div>
-
-                  <div class="text-wrap">
-                    <textarea id="visualDescriptionInput" name="visual_description" placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。" required></textarea>
-                    <div id="mentionMenu" class="mention-menu hidden"></div>
-                  </div>
-
-                  <div class="dock-actions">
-                    <div class="dock-tools">
-                      <button type="button" class="tool-button square" id="uploadTrigger" title="上传图片"><img src="/ui-assets/jia.png" alt="" /></button>
-                      <button type="button" class="tool-button" id="stylePickerButton"><img id="stylePickerIcon" class="tool-icon-img" src="/ui-assets/fengge.png" alt="" /><span id="stylePickerLabel">风格预设</span></button>
-                      <button type="button" class="tool-button" id="sizePickerButton"><span id="sizeIcon" class="size-icon ratio-34"></span><span id="sizeText">3:4</span></button>
-                      <button type="button" class="tool-button" id="expandDescriptionButton"><img class="tool-icon-img" src="/ui-assets/size.png" alt="" /><span>扩写</span></button>
-                      <button type="button" class="tool-button doudou-toggle" id="doudouIpButton" aria-pressed="false"><img class="tool-icon-img doudou-icon" src="/doudou/6视图/22-1.png" alt="" /><span>兜兜IP</span></button>
-                      <button type="button" class="tool-button overlay-toggle" id="includeLogoButton" aria-pressed="false" title="在成图左上角叠加抖音商城 Logo"><span>左上角 Logo</span></button>
-                      <button type="button" class="tool-button overlay-toggle" id="includeSearchOverlayButton" aria-pressed="false" title="在成图右下角叠加活动搜索框"><span>右下角搜索框</span></button>
-                    </div>
-                    <button type="submit" id="runButton" class="send-button" title="运行链路"><img src="/ui-assets/runButton.png" alt="" /></button>
-                  </div>
-                </form>
-              </div>
             </div>
 
             <aside id="chatPanel" class="chat-panel">
@@ -175,9 +149,13 @@
               </div>
               <button id="chatScrollBottom" type="button" class="chat-scroll-bottom hidden" title="回到底部">↓</button>
               <div class="chat-composer">
+                <div id="referenceStrip" class="reference-strip hidden"></div>
                 <div class="composer-row">
                   <div class="composer-avatar"></div>
-                  <textarea id="chatInput" rows="2" placeholder="今天我们要创作什么" autocomplete="off"></textarea>
+                  <div class="composer-input-wrap">
+                    <textarea id="chatInput" rows="2" placeholder="今天我们要创作什么" autocomplete="off"></textarea>
+                    <div id="mentionMenu" class="mention-menu hidden"></div>
+                  </div>
                 </div>
                 <div class="composer-meta">
                   <input id="campaignNameInput" class="meta-chip" form="briefForm" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
@@ -351,6 +329,17 @@
 
     <form id="materialForm" class="hidden"></form>
     <form id="xlsxForm" class="hidden"></form>
+    <form id="briefForm" class="hidden" enctype="multipart/form-data" novalidate>
+      <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
+      <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
+      <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
+      <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
+      <input name="generate_image" type="checkbox" checked hidden />
+      <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
+      <textarea id="visualDescriptionInput" name="visual_description"></textarea>
+      <button type="submit" id="runButton" class="hidden">运行</button>
+    </form>
+    <div id="sizePopover" class="floating-picker size-picker hidden"></div>
     <div id="stylePresetSection" class="style-picker hidden"></div>
     <script src="/app.js"></script>
   </body>

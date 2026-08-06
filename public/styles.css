@@ -3571,3 +3571,142 @@ body {
 .floating-picker button {
   color: #ffffff;
 }
+
+/* ============ Figma 细节对齐（完全按稿） ============ */
+.lovart-rail .rail-item {
+  width: 57px;
+  height: 64px;
+  border-radius: 18px;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.lovart-rail .rail-item img {
+  width: 20px;
+  height: 20px;
+}
+
+.lovart-rail-pills {
+  padding: 8px 6px;
+  gap: 2px;
+}
+
+.prompt-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.prompt-tool-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.prompt-tool-chip {
+  border: 1px solid rgba(82, 82, 82, 0.46);
+  background: transparent;
+  color: #ffffff;
+  font-size: 12px;
+  border-radius: 9px;
+  height: 30px;
+  padding: 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.prompt-tool-chip:hover {
+  background: #2c2c2c;
+}
+
+.notification-bell {
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  border: 0;
+  background: #ffffff;
+  color: #000000;
+  opacity: 0.5;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ctb-label {
+  display: none;
+}
+
+.canvas-main .generation-story {
+  display: none !important;
+}
+
+.project-card-empty {
+  background: #1f1f1f;
+}
+
+.project-card-empty .project-card-thumb {
+  background: #262626;
+}
+
+.project-card-empty h3 {
+  color: #777777;
+}
+
+.composer-input-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.composer-input-wrap textarea {
+  width: 100%;
+}
+
+.composer-input-wrap .mention-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+}
+
+.chat-composer .reference-strip {
+  margin-bottom: 8px;
+}
+
+.chat-msg-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+}
+
+.chat-msg-wrap.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.chat-msg-wrap.assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.chat-msg-date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.chat-msg-image {
+  padding: 4px;
+  max-width: 100%;
+}
+
+.chat-msg-image img {
+  width: 100%;
+  display: block;
+  border-radius: 8px;
+}
