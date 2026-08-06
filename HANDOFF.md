@@ -303,3 +303,4 @@ Failed to parse URL from /style/%E7%9C%9F%E5%AE%9E%E4%BA%BA%E7%89%A9/%E6%95%B4%E
 - `case/` 移出 Git 跟踪（本地保留副本，已加入 `.gitignore`），归档目标：OSS `refra-assets` 桶，路径 `oss://refra-assets/case/`。上传：`ossutil cp -r ./case oss://refra-assets/case/`（使用 RAM 用户 `refra-oss` 的密钥）。
 - 已下线预设 id（服务端返回 400）：`hand_drawn_flat_doodle_v1`、`outline_style_v1`、`clay_fun_activity_poster_v1`、`scrapbook_collage_poster_v1`、`y3k_cyber_fashion_poster_v1`；对应预设常量保留为休眠数据，未再从 `presetByStyleId` / `choosePresetVariant` 引用。
 - 效果：Git 跟踪体积约 592M → 470M；Vercel 部署包同步变轻。历史体积（GitHub 克隆）未变，如需进一步瘦身需重写历史（暂缓）。
+- 2026-08-06：Vercel 平台对总请求体有约 850KB 实测上限，上传参考图超限会返回 503（不进入函数）。前端已做客户端压缩（600KB 总预算，1280px/WebP→JPEG 递减）；服务端对参考图总大小 >600KB 返回 413。素材库/风格图上传同样受该平台限制，后续如需大图上传应改用 OSS 直传。

@@ -471,6 +471,69 @@ function fileToDataUrl(file) {
   });
 }
 
+const REFERENCE_UPLOAD_MAX_TOTAL = 600 * 1024;
+const REFERENCE_COMPRESS_ATTEMPTS = [
+  { type: "image/webp", quality: 0.85, maxDim: 1280 },
+  { type: "image/jpeg", quality: 0.8, maxDim: 1280 },
+  { type: "image/jpeg", quality: 0.65, maxDim: 1024 },
+];
+
+function referenceBytesUsed() {
+  return referenceFiles.reduce((sum, item) => sum + (item.file?.size || 0), 0);
+}
+
+function loadImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("图片无法解析，请更换文件"));
+    };
+    img.src = url;
+  });
+}
+
+function encodeImageBlob(img, { type, quality, maxDim }) {
+  const sourceWidth = img.naturalWidth || img.width || 1;
+  const sourceHeight = img.naturalHeight || img.height || 1;
+  const scale = Math.min(1, maxDim / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+function compressedReferenceName(name, type) {
+  const ext = type === "image/webp" ? ".webp" : ".jpg";
+  return `${String(name || "reference").replace(/\.[a-z0-9]+$/i, "")}${ext}`;
+}
+
+async function compressReferenceFile(file, budget) {
+  if (file.size <= budget) {
+    return { file, dataUrl: await fileToDataUrl(file) };
+  }
+  const img = await loadImageElement(file);
+  for (const attempt of REFERENCE_COMPRESS_ATTEMPTS) {
+    const blob = await encodeImageBlob(img, attempt);
+    if (blob && blob.size <= budget) {
+      const out = new File([blob], compressedReferenceName(file.name, attempt.type), { type: attempt.type });
+      return { file: out, dataUrl: await fileToDataUrl(out) };
+    }
+  }
+  throw new Error(`参考图压缩后仍超过剩余空间（约 ${Math.max(1, Math.round(budget / 1024))}KB），请减少参考图数量或更换更小的图片`);
+}
+
 function renderReferenceStrip() {
   referenceStrip.classList.toggle("hidden", !referenceFiles.length);
   referenceStrip.innerHTML = referenceFiles
@@ -499,8 +562,16 @@ function renderReferenceStrip() {
 async function addReferenceFiles(files) {
   for (const file of files) {
     if (!file.type.startsWith("image/")) continue;
-    const dataUrl = await fileToDataUrl(file);
-    referenceFiles.push({ file, url: URL.createObjectURL(file), dataUrl });
+    try {
+      const prepared = await compressReferenceFile(file, REFERENCE_UPLOAD_MAX_TOTAL - referenceBytesUsed());
+      referenceFiles.push({
+        file: prepared.file,
+        url: URL.createObjectURL(prepared.file),
+        dataUrl: prepared.dataUrl,
+      });
+    } catch (error) {
+      setError(error.message);
+    }
   }
   referenceImageInput.value = "";
   renderReferenceStrip();
@@ -535,11 +606,11 @@ async function addMaterialReference(item) {
   const contentType = sourceBlob.type || "image/png";
   if (!contentType.startsWith("image/")) throw new Error("当前素材文件不是有效图片。");
   const file = new File([sourceBlob], materialFileName(item, contentType), { type: contentType });
-  const dataUrl = await fileToDataUrl(file);
+  const prepared = await compressReferenceFile(file, REFERENCE_UPLOAD_MAX_TOTAL - referenceBytesUsed());
   referenceFiles.push({
-    file,
+    file: prepared.file,
     url: item.image,
-    dataUrl,
+    dataUrl: prepared.dataUrl,
     source: "material",
     materialNumber: item.number,
   });

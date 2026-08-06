@@ -78,6 +78,9 @@ const IS_OSS = storageBackend() === "oss";
 const ADMIN_TOKEN = textOf(process.env.ADMIN_TOKEN).trim();
 const MAX_UPLOAD_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_UPLOAD_BYTES || 25 * 1024 * 1024));
 const MAX_JSON_BYTES = Math.max(64 * 1024, Number(process.env.MAX_JSON_BYTES || 2 * 1024 * 1024));
+// Vercel 平台对总请求体有约 850KB 的实测上限，超限直接返回 503（不会进入函数）。
+// 前端已把参考图压缩进该预算，这里做服务端兜底校验。
+const MAX_REFERENCE_UPLOAD_BYTES = 600 * 1024;
 const RATE_LIMIT_RUN_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_RUN_PER_MIN || 3));
 const RATE_LIMIT_EXPAND_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_EXPAND_PER_MIN || 10));
 const RATE_LIMIT_SEARCH_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_SEARCH_PER_MIN || 10));
@@ -6353,6 +6356,10 @@ async function readRunRequest(req) {
       return left - right;
     })
     .map(([, file]) => file);
+  const referenceTotal = referenceFiles.reduce((sum, file) => sum + file.data.length, 0);
+  if (referenceTotal > MAX_REFERENCE_UPLOAD_BYTES) {
+    throw httpError(413, `参考图总大小不能超过 ${Math.round(MAX_REFERENCE_UPLOAD_BYTES / 1024)}KB，请减少或压缩参考图后重试`);
+  }
   for (const [index, file] of referenceFiles.entries()) {
     uploaded.push(await saveUploadedReferenceFile(file, `user-reference-${index + 1}`));
   }
