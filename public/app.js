@@ -880,7 +880,12 @@ function applyStage(event, payload) {
 }
 
 async function runStream(data) {
-  const response = await apiFetch("/api/run-stream", { method: "POST", body: data });
+  const isFormData = data instanceof FormData;
+  const response = await apiFetch("/api/run-stream", {
+    method: "POST",
+    body: isFormData ? data : JSON.stringify(data),
+    headers: isFormData ? undefined : { "Content-Type": "application/json" },
+  });
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.error || `链路运行失败（HTTP ${response.status}）`);
@@ -1196,11 +1201,7 @@ function renderAssets(items) {
 }
 
 async function loadAssets() {
-  const response = await fetch("/api/assets");
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "读取资产失败");
-  renderAssets(payload.assets || []);
-  return payload.assets || [];
+  return loadProjects();
 }
 
 function renderStyleList() {
@@ -1674,6 +1675,7 @@ async function boot() {
     renderSizePicker();
     await loadStyles();
     await loadLibrary();
+    await loadHome();
   } catch (error) {
     setError(`服务异常：${error.message}`);
   }
@@ -1698,10 +1700,14 @@ form.addEventListener("submit", async (event) => {
   data.set("doudou_ip", doudouIpInput.value);
   data.set("include_logo", isToolToggleEnabled(includeLogoButton) ? "true" : "false");
   data.set("include_search_overlay", isToolToggleEnabled(includeSearchOverlayButton) ? "true" : "false");
+  data.set("project_id", currentProject?.id || "");
 
   try {
     await runStream(data);
-    await loadAssets().catch(() => {});
+    await Promise.all([
+      refreshProject().catch(() => {}),
+      loadProjects().catch(() => {}),
+    ]);
   } catch (error) {
     setError(error.message);
     resultView.className = "generated-result empty-state";
@@ -1755,9 +1761,9 @@ document.addEventListener("keydown", (event) => {
 generateButton.addEventListener("click", () => showView("generate"));
 assetsButton.addEventListener("click", () => {
   showView("assets");
-  loadAssets().catch((error) => {
-    assetsList.className = "asset-timeline empty-state";
-    assetsList.textContent = error.message;
+  loadProjects().catch((error) => {
+    projectsGrid.className = "project-grid empty-state";
+    projectsGrid.textContent = error.message;
   });
 });
 styleButton.addEventListener("click", () => {
@@ -1772,6 +1778,499 @@ libraryButton.addEventListener("click", () => {
     libraryMessage.textContent = error.message;
   });
 });
+
+homeButton.addEventListener("click", () => {
+  showView("home");
+  loadHome().catch((error) => {
+    setError(error.message);
+  });
+});
+
+newProjectButton.addEventListener("click", () => {
+  createEmptyProject().catch((error) => setError(error.message));
+});
+
+newProjectFromProjectsButton.addEventListener("click", () => {
+  createEmptyProject().catch((error) => setError(error.message));
+});
+
+recentProjectsMore.addEventListener("click", () => {
+  showView("assets");
+  loadProjects().catch((error) => setError(error.message));
+});
+
+homeInspirationMore.addEventListener("click", () => {
+  showView("materials");
+  loadLibrary().catch((error) => setError(error.message));
+});
+
+homeGenerateButton.addEventListener("click", () => {
+  createProjectFromPrompt().catch((error) => setError(error.message));
+});
+
+homePromptInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && homePromptInput.value.trim()) {
+    createProjectFromPrompt().catch((error) => setError(error.message));
+  }
+});
+
+chatSendButton.addEventListener("click", () => {
+  sendChatMessage(chatInput.value).catch((error) => setError(error.message));
+});
+
+chatInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendChatMessage(chatInput.value).catch((error) => setError(error.message));
+  }
+});
+
+canvasZoomIn.addEventListener("click", () => setCanvasScale(Math.min(3, canvasScale + 0.1)));
+canvasZoomOut.addEventListener("click", () => setCanvasScale(Math.max(0.1, canvasScale - 0.1)));
+canvasFitButton.addEventListener("click", fitCanvas);
+
+/* ============ 项目 / 无限画布 / 设计对话 ============ */
+let currentProject = null;
+let canvasScale = 1;
+let canvasPan = { x: 40, y: 40 };
+let selectedElementId = null;
+let chatGenerating = false;
+
+const canvasWorkspace = document.querySelector("#canvasWorkspace");
+const canvasViewport = document.querySelector("#canvasViewport");
+const canvasToolbar = document.querySelector("#canvasToolbar");
+const canvasProjectTitle = document.querySelector("#canvasProjectTitle");
+const canvasZoomLevel = document.querySelector("#canvasZoomLevel");
+const recentProjects = document.querySelector("#recentProjects");
+const projectsGrid = document.querySelector("#projectsGrid");
+const homeInspiration = document.querySelector("#homeInspiration");
+const homePromptInput = document.querySelector("#homePromptInput");
+const homeGenerateButton = document.querySelector("#homeGenerateButton");
+const chatMessages = document.querySelector("#chatMessages");
+const chatInput = document.querySelector("#chatInput");
+const chatSendButton = document.querySelector("#chatSendButton");
+const newProjectButton = document.querySelector("#newProjectButton");
+const newProjectFromProjectsButton = document.querySelector("#newProjectFromProjectsButton");
+const recentProjectsMore = document.querySelector("#recentProjectsMore");
+const homeInspirationMore = document.querySelector("#homeInspirationMore");
+const canvasZoomIn = document.querySelector("#canvasZoomIn");
+const canvasZoomOut = document.querySelector("#canvasZoomOut");
+const canvasFitButton = document.querySelector("#canvasFitButton");
+
+function relativeEditTime(iso) {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "刚刚编辑";
+  if (mins < 60) return `${mins} 分钟前编辑`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时前编辑`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} 天前编辑`;
+  return new Date(iso).toLocaleDateString("zh-CN");
+}
+
+function projectCardHtml(project) {
+  const thumb = project.thumbnail_url
+    ? `<div class="project-card-thumb"><img src="${escapeHtml(project.thumbnail_url)}" alt="" loading="lazy" /></div>`
+    : `<div class="project-card-thumb"></div>`;
+  return `<article class="project-card" data-project-id="${escapeHtml(project.id)}">
+    ${thumb}
+    <div class="project-card-body">
+      <h3>${escapeHtml(project.title || "未命名项目")}</h3>
+      <p>${relativeEditTime(project.updated_at)}</p>
+    </div>
+  </article>`;
+}
+
+function newProjectCardHtml() {
+  return `<div class="project-card-new" data-new-project><div class="plus-circle">+</div><span>新建项目</span></div>`;
+}
+
+async function fetchProjects() {
+  const response = await fetch("/api/projects");
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "读取项目失败");
+  return payload.projects || [];
+}
+
+function renderProjectsInto(container, projects, { withNewCard = false } = {}) {
+  const cards = [...(withNewCard ? [newProjectCardHtml()] : []), ...projects.map(projectCardHtml)];
+  container.classList.remove("empty-state");
+  container.innerHTML = cards.length ? cards.join("") : `<div class="empty-state">暂无项目</div>`;
+  if (withNewCard) {
+    container.querySelector("[data-new-project]")?.addEventListener("click", () => {
+      createEmptyProject().catch((error) => setError(error.message));
+    });
+  }
+  container.querySelectorAll("[data-project-id]").forEach((card) => {
+    card.addEventListener("click", () => openCanvas(card.dataset.projectId).catch((error) => setError(error.message)));
+  });
+}
+
+async function loadProjects() {
+  const projects = await fetchProjects();
+  renderProjectsInto(projectsGrid, projects, { withNewCard: true });
+  return projects;
+}
+
+function renderHomeInspiration(materials) {
+  if (!materials.length) {
+    homeInspiration.innerHTML = `<div class="empty-state">暂无灵感素材</div>`;
+    return;
+  }
+  homeInspiration.innerHTML = materials.slice(0, 8).map((material) => `
+    <figure class="inspiration-tile" data-material-number="${escapeHtml(material.number || "")}">
+      <img src="${escapeHtml(material.image || "")}" alt="" loading="lazy" />
+      <figcaption>${escapeHtml(material.title || material.number || "")}</figcaption>
+    </figure>
+  `).join("");
+  homeInspiration.querySelectorAll("[data-material-number]").forEach((tile) => {
+    tile.addEventListener("click", () => {
+      const material = materials.find((item) => item.number === tile.dataset.materialNumber);
+      if (material) {
+        activeMaterial = material;
+        openMaterialDetail(material);
+      }
+    });
+  });
+}
+
+async function loadHome() {
+  const projects = await fetchProjects().catch(() => []);
+  renderProjectsInto(recentProjects, projects.slice(0, 3), { withNewCard: true });
+  const payload = await fetch("/api/materials").then((response) => response.json()).catch(() => ({ materials: [] }));
+  renderHomeInspiration(payload.materials || []);
+}
+
+async function createEmptyProject() {
+  const response = await apiFetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "未命名项目" }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "创建项目失败");
+  await openCanvas(payload.id);
+}
+
+async function createProjectFromPrompt() {
+  const prompt = homePromptInput.value.trim();
+  if (!prompt) {
+    setError("先输入一句画面描述");
+    homePromptInput.focus();
+    return;
+  }
+  const response = await apiFetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "创建项目失败");
+  await openCanvas(payload.id, { prefillPrompt: prompt, autoGenerate: true });
+}
+
+async function openCanvas(projectId, { prefillPrompt = "", autoGenerate = false } = {}) {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "读取项目失败");
+  currentProject = payload;
+  selectedElementId = null;
+  showView("generate");
+  renderCanvas();
+  renderChatMessages(currentProject);
+  if (prefillPrompt) {
+    visualDescriptionInput.value = prefillPrompt;
+    if (typeof autoResizeDescription === "function") autoResizeDescription();
+  }
+  if (autoGenerate && prefillPrompt) {
+    setTimeout(() => sendChatMessage(prefillPrompt).catch((error) => setError(error.message)), 120);
+  }
+}
+
+async function refreshProject() {
+  if (!currentProject) return;
+  const response = await fetch(`/api/projects/${encodeURIComponent(currentProject.id)}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "读取项目失败");
+  currentProject = payload;
+  renderCanvas();
+  renderChatMessages(currentProject);
+}
+
+function elementKindLabel(kind) {
+  return {
+    typography: "第一步版式图",
+    kv: "完整 KV",
+    title: "标题拆分",
+    background: "背景拆分",
+    package: "拆分包",
+  }[kind] || "画布元素";
+}
+
+function autoLayoutElements(elements) {
+  return (elements || []).map((element, index) => {
+    if (Number.isFinite(element.clientX) && Number.isFinite(element.clientY)) return element;
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    return { ...element, clientX: 24 + col * 320, clientY: 24 + row * 360 };
+  });
+}
+
+function applyCanvasTransform() {
+  canvasViewport.style.transform = `translate(${canvasPan.x}px, ${canvasPan.y}px) scale(${canvasScale})`;
+}
+
+function updateCanvasZoomLabel() {
+  canvasZoomLevel.textContent = `${Math.round(canvasScale * 100)}%`;
+}
+
+function setCanvasScale(scale) {
+  canvasScale = scale;
+  applyCanvasTransform();
+  updateCanvasZoomLabel();
+}
+
+function fitCanvas() {
+  const elements = currentProject?.elements || [];
+  if (!elements.length) {
+    setCanvasScale(1);
+    canvasPan = { x: 40, y: 40 };
+    applyCanvasTransform();
+    return;
+  }
+  const laidOut = autoLayoutElements(elements);
+  const maxX = Math.max(...laidOut.map((el) => el.clientX + 260));
+  const maxY = Math.max(...laidOut.map((el) => el.clientY + 360));
+  const width = canvasWorkspace.clientWidth || 800;
+  const height = canvasWorkspace.clientHeight || 600;
+  canvasScale = Math.max(0.1, Math.min(1, (width - 60) / maxX, (height - 60) / maxY));
+  canvasPan = { x: 32, y: 32 };
+  applyCanvasTransform();
+  updateCanvasZoomLabel();
+}
+
+function renderCanvas() {
+  if (!currentProject) return;
+  canvasProjectTitle.textContent = currentProject.title || "未命名项目";
+  canvasToolbar.classList.remove("hidden");
+  const elements = autoLayoutElements(currentProject.elements || []);
+  canvasViewport.innerHTML = elements.map((element) => {
+    const selected = element.id === selectedElementId ? " selected" : "";
+    const actions = element.kind === "kv"
+      ? `<button data-node-action="open">放大</button><button data-node-action="download">下载</button><button data-node-action="regenerate">重新生成</button><button data-node-action="split">拆分</button><button data-node-action="delete">删除</button>`
+      : `<button data-node-action="open">放大</button><button data-node-action="download">下载</button><button data-node-action="delete">删除</button>`;
+    return `<div class="canvas-node${selected}" data-element-id="${escapeHtml(element.id)}" style="left:${element.clientX}px;top:${element.clientY}px">
+      <img src="${escapeHtml(element.url || "")}" alt="${escapeHtml(element.name || "")}" />
+      <div class="canvas-node-label"><span>${elementKindLabel(element.kind)}</span><span>${escapeHtml(element.name || "")}</span></div>
+      <div class="canvas-node-actions">${actions}</div>
+    </div>`;
+  }).join("");
+  applyCanvasTransform();
+  updateCanvasZoomLabel();
+  document.querySelector("#canvasEmpty")?.classList.toggle("hidden", elements.length > 0);
+  canvasViewport.querySelectorAll(".canvas-node").forEach((node) => {
+    node.addEventListener("click", (event) => {
+      if (event.target.closest("[data-node-action]")) return;
+      selectedElementId = node.dataset.elementId;
+      renderCanvas();
+    });
+    node.querySelectorAll("[data-node-action]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const element = (currentProject.elements || []).find((item) => item.id === node.dataset.elementId);
+        if (element) handleNodeAction(button.dataset.nodeAction, element).catch((error) => setError(error.message));
+      });
+    });
+  });
+}
+
+let canvasPanning = false;
+let canvasPanStart = null;
+
+canvasWorkspace.addEventListener("mousedown", (event) => {
+  if (event.target.closest(".canvas-node") || event.target.closest("button")) return;
+  canvasPanning = true;
+  canvasPanStart = { x: event.clientX, y: event.clientY, px: canvasPan.x, py: canvasPan.y };
+  canvasWorkspace.style.cursor = "grabbing";
+});
+
+window.addEventListener("mousemove", (event) => {
+  if (!canvasPanning || !canvasPanStart) return;
+  canvasPan.x = canvasPanStart.px + (event.clientX - canvasPanStart.x);
+  canvasPan.y = canvasPanStart.py + (event.clientY - canvasPanStart.y);
+  applyCanvasTransform();
+});
+
+window.addEventListener("mouseup", () => {
+  canvasPanning = false;
+  canvasPanStart = null;
+  canvasWorkspace.style.cursor = "";
+});
+
+canvasWorkspace.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  const factor = event.deltaY < 0 ? 1.1 : 0.9;
+  setCanvasScale(Math.min(3, Math.max(0.1, canvasScale * factor)));
+}, { passive: false });
+
+async function handleNodeAction(action, element) {
+  if (action === "open") {
+    if (element.url) window.open(element.url, "_blank");
+    return;
+  }
+  if (action === "download") {
+    if (element.url) {
+      const link = document.createElement("a");
+      link.href = element.url;
+      link.download = element.name || "kv.png";
+      link.click();
+    }
+    return;
+  }
+  if (action === "delete") {
+    if (!window.confirm(`确认删除画布元素 ${element.name}？`)) return;
+    const response = await apiFetch(`/api/projects/${encodeURIComponent(currentProject.id)}/elements/${encodeURIComponent(element.id)}`, { method: "DELETE" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "删除失败");
+    selectedElementId = null;
+    await refreshProject();
+    return;
+  }
+  if (action === "regenerate") {
+    const prompt = currentProject.prompt || visualDescriptionInput.value.trim() || "重新生成一版更优的 KV";
+    await runVariantGeneration(prompt, "重新生成一个更优的版本");
+    return;
+  }
+  if (action === "split") {
+    await splitCanvasElement(element);
+  }
+}
+
+function appendChatMessage(role, content) {
+  const empty = chatMessages.querySelector(".chat-empty");
+  if (empty) empty.remove();
+  const div = document.createElement("div");
+  div.className = `chat-msg ${role}`;
+  div.textContent = content;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function renderChatMessages(project) {
+  const messages = project.messages || [];
+  chatMessages.innerHTML = messages.length
+    ? messages.map((message) => `<div class="chat-msg ${message.role === "user" ? "user" : "assistant"}">${escapeHtml(message.content)}</div>`).join("")
+    : `<div class="chat-empty">输入想法可基于当前画布继续生成新变体；选中画布中的图后，可针对该图直接修改。</div>`;
+}
+
+async function sendChatMessage(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text || chatGenerating || !currentProject) return;
+  appendChatMessage("user", text);
+  chatInput.value = "";
+  await apiFetch(`/api/projects/${encodeURIComponent(currentProject.id)}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role: "user", content: text }),
+  }).catch(() => {});
+  if (selectedElementId) {
+    await runElementEdit(selectedElementId, text);
+  } else {
+    await runVariantGeneration(text, text);
+  }
+}
+
+async function runVariantGeneration(prompt, userText) {
+  chatGenerating = true;
+  appendChatMessage("assistant", "正在基于你的想法生成新变体...");
+  try {
+    const request = {
+      campaign_name: currentProject.title || "",
+      campaign_subtitle: campaignSubtitleInput.value.trim(),
+      campaign_time: campaignTimeInput.value.trim(),
+      visual_description: prompt,
+      image_size: imageSizeInput.value,
+      style_preset: stylePresetInput.value,
+      integrated_layout_variant: integratedLayoutInput.value,
+      generate_image: true,
+      doudou_ip: doudouIpInput.value === "true",
+      include_logo: isToolToggleEnabled(includeLogoButton),
+      include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
+      project_id: currentProject.id,
+      uploaded_references: [],
+      reference_labels: [],
+    };
+    await runStream(request);
+    await refreshProject();
+    appendChatMessage("assistant", "已生成新变体，可在画布中查看。");
+  } catch (error) {
+    appendChatMessage("assistant", `生成失败：${error.message}`);
+  } finally {
+    chatGenerating = false;
+  }
+}
+
+async function runElementEdit(elementId, instruction) {
+  chatGenerating = true;
+  appendChatMessage("assistant", "正在修改选中的图...");
+  try {
+    const response = await apiFetch(`/api/projects/${encodeURIComponent(currentProject.id)}/elements/${encodeURIComponent(elementId)}/edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "修改失败");
+    await refreshProject();
+    appendChatMessage("assistant", "已基于你的要求生成修改版本，可在画布中查看。");
+  } catch (error) {
+    appendChatMessage("assistant", `修改失败：${error.message}`);
+  } finally {
+    chatGenerating = false;
+  }
+}
+
+async function splitCanvasElement(element) {
+  if (element.kind !== "kv") return;
+  appendChatMessage("assistant", `正在拆分「${element.name}」的标题与背景...`);
+  try {
+    const response = await apiFetch("/api/assets/split", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: element.name,
+        title: currentProject.title || "",
+        subtitle: "",
+        time: "",
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "拆分失败");
+    const candidates = [
+      ["title", payload.title_layer],
+      ["background", payload.background_layer],
+      ["package", payload.split_package],
+    ];
+    for (const [kind, item] of candidates) {
+      const keys = [];
+      if (item?.object_key) keys.push([kind, item.object_key]);
+      if (item?.transparent_object_key) keys.push([`${kind}-transparent`, item.transparent_object_key]);
+      for (const [subKind, key] of keys) {
+        await apiFetch(`/api/projects/${encodeURIComponent(currentProject.id)}/elements`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: subKind, name: key.split("/").pop(), object_key: key }),
+        }).catch(() => {});
+      }
+    }
+    await refreshProject();
+    appendChatMessage("assistant", "拆分完成：标题/背景图层已加入画布。");
+  } catch (error) {
+    appendChatMessage("assistant", `拆分失败：${error.message}`);
+  }
+}
 
 libraryTabs.querySelectorAll("[data-material-tab]").forEach((button) => {
   button.addEventListener("click", () => {

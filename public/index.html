@@ -8,163 +8,147 @@
   </head>
   <body>
     <div class="neo-app">
-      <header class="neo-brand" aria-label="Aeye design">
-        <img src="/ui-assets/neo-brand.png" alt="灵眸 Aeye design" />
-      </header>
-
-      <nav class="side-rail" aria-label="主导航">
-        <button type="button" class="rail-item active" data-view-target="generate" id="generateButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/generate-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/generate-click.png" alt="" />
-          </span>
-          <span>生成</span>
-        </button>
-        <button type="button" class="rail-item" data-view-target="assets" id="assetsButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/assets-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/assets-click.png" alt="" />
-          </span>
-          <span>资产</span>
-        </button>
-        <button type="button" class="rail-item" data-view-target="styles" id="styleButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/style-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/style-click.png" alt="" />
-          </span>
-          <span>风格</span>
-        </button>
-        <button type="button" class="rail-item" data-view-target="materials" id="libraryButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/material-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/material-click.png" alt="" />
-          </span>
-          <span>素材</span>
-        </button>
+      <nav class="lovart-rail" aria-label="主导航">
+        <button type="button" class="rail-item lovart-create" id="newProjectButton" data-view-target="generate" title="新建项目">+</button>
+        <div class="lovart-rail-pills">
+          <button type="button" class="rail-item active" data-view-target="home" id="homeButton" title="主页">⌂</button>
+          <button type="button" class="rail-item" data-view-target="assets" id="assetsButton" title="项目">▤</button>
+          <button type="button" class="rail-item" data-view-target="generate" id="generateButton" title="画布">◇</button>
+          <button type="button" class="rail-item" data-view-target="styles" id="styleButton" title="风格">✦</button>
+          <button type="button" class="rail-item" data-view-target="materials" id="libraryButton" title="灵感">☀</button>
+        </div>
       </nav>
 
-      <main class="neo-main">
-        <section id="generatePage" class="neo-page generate-page active">
+      <main class="lovart-main">
+        <header class="lovart-topbar">
+          <div class="lovart-brand">
+            <div class="brand-mark">A</div>
+            <span>Aeye KV Studio</span>
+          </div>
+          <input
+            id="adminTokenInput"
+            class="admin-token-input"
+            type="password"
+            placeholder="管理令牌"
+            autocomplete="off"
+            title="管理令牌（ADMIN_TOKEN），用于生成、上传与删除等写接口"
+          />
+        </header>
+
+        <section id="homePage" class="neo-page home-page active">
+          <div class="home-wrap">
+            <div class="hero">
+              <div class="hero-brand-mark">A</div>
+              <h1>Aeye 让设计更简单</h1>
+              <p class="hero-sub">输入想法即可生成，帮你完成一切</p>
+              <div class="hero-search">
+                <input id="homePromptInput" type="text" placeholder="描述你想生成的画面，回车或点击生成..." autocomplete="off" />
+                <button id="homeGenerateButton" class="hero-generate-btn" type="button">生成</button>
+              </div>
+            </div>
+            <div class="home-section">
+              <div class="home-section-head">
+                <h2>最近项目</h2>
+                <button id="recentProjectsMore" type="button" class="text-link">查看全部 →</button>
+              </div>
+              <div id="recentProjects" class="project-grid empty-state">加载中...</div>
+            </div>
+            <div class="home-section">
+              <div class="home-section-head">
+                <h2>灵感发现</h2>
+                <button id="homeInspirationMore" type="button" class="text-link">查看全部 →</button>
+              </div>
+              <div id="homeInspiration" class="material-masonry empty-state">加载中...</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="generatePage" class="neo-page generate-page">
           <div id="errorBox" class="toast hidden"></div>
 
-          <section id="generationStory" class="generation-story hidden">
-            <h1 id="storyTitle"></h1>
-            <div id="storyReferences" class="story-references"></div>
-            <p id="storyDescription" class="story-description"></p>
-            <div id="stageAccordions" class="stage-accordions"></div>
-            <div id="resultView" class="generated-result empty-state">等待生成结果</div>
-          </section>
+          <div class="canvas-layout">
+            <div class="canvas-main">
+              <div id="canvasToolbar" class="canvas-toolbar hidden">
+                <span id="canvasProjectTitle" class="canvas-project-title"></span>
+                <div class="canvas-zoom">
+                  <button id="canvasZoomOut" type="button">−</button>
+                  <span id="canvasZoomLevel">100%</span>
+                  <button id="canvasZoomIn" type="button">+</button>
+                </div>
+                <button id="canvasFitButton" type="button" class="canvas-tool-btn">适应</button>
+              </div>
+              <div id="canvasWorkspace" class="canvas-workspace">
+                <div id="canvasViewport" class="canvas-viewport"></div>
+                <div id="canvasEmpty" class="canvas-empty">生成结果会展示在这里，可拖动画布、滚轮缩放</div>
+              </div>
 
-          <div class="prompt-stack">
-            <div class="brief-top-row">
-              <input
-                id="campaignNameInput"
-                class="title-input"
-                form="briefForm"
-                name="campaign_name"
-                placeholder="活动名称（选填）"
-                autocomplete="off"
-              />
-              <input
-                id="campaignSubtitleInput"
-                class="subtitle-input"
-                form="briefForm"
-                name="campaign_subtitle"
-                placeholder="副标题"
-                autocomplete="off"
-              />
-              <input
-                id="campaignTimeInput"
-                class="time-input"
-                form="briefForm"
-                name="campaign_time"
-                placeholder="活动时间"
-                autocomplete="off"
-              />
+              <section id="generationStory" class="generation-story hidden">
+                <h1 id="storyTitle"></h1>
+                <div id="storyReferences" class="story-references"></div>
+                <p id="storyDescription" class="story-description"></p>
+                <div id="stageAccordions" class="stage-accordions"></div>
+                <div id="resultView" class="generated-result empty-state">等待生成结果</div>
+              </section>
+
+              <div class="prompt-stack">
+                <div class="brief-top-row">
+                  <input id="campaignNameInput" class="title-input" form="briefForm" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
+                  <input id="campaignSubtitleInput" class="subtitle-input" form="briefForm" name="campaign_subtitle" placeholder="副标题" autocomplete="off" />
+                  <input id="campaignTimeInput" class="time-input" form="briefForm" name="campaign_time" placeholder="活动时间" autocomplete="off" />
+                </div>
+
+                <form id="briefForm" class="prompt-dock" enctype="multipart/form-data">
+                  <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
+                  <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
+                  <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
+                  <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
+                  <input name="generate_image" type="checkbox" checked hidden />
+                  <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
+
+                  <div id="sizePopover" class="floating-picker size-picker hidden"></div>
+                  <div id="referenceStrip" class="reference-strip hidden"></div>
+
+                  <div class="text-wrap">
+                    <textarea id="visualDescriptionInput" name="visual_description" placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。" required></textarea>
+                    <div id="mentionMenu" class="mention-menu hidden"></div>
+                  </div>
+
+                  <div class="dock-actions">
+                    <div class="dock-tools">
+                      <button type="button" class="tool-button square" id="uploadTrigger" title="上传图片"><img src="/ui-assets/jia.png" alt="" /></button>
+                      <button type="button" class="tool-button" id="stylePickerButton"><img id="stylePickerIcon" class="tool-icon-img" src="/ui-assets/fengge.png" alt="" /><span id="stylePickerLabel">风格预设</span></button>
+                      <button type="button" class="tool-button" id="sizePickerButton"><span id="sizeIcon" class="size-icon ratio-34"></span><span id="sizeText">3:4</span></button>
+                      <button type="button" class="tool-button" id="expandDescriptionButton"><img class="tool-icon-img" src="/ui-assets/size.png" alt="" /><span>扩写</span></button>
+                      <button type="button" class="tool-button doudou-toggle" id="doudouIpButton" aria-pressed="false"><img class="tool-icon-img doudou-icon" src="/doudou/6视图/22-1.png" alt="" /><span>兜兜IP</span></button>
+                      <button type="button" class="tool-button overlay-toggle" id="includeLogoButton" aria-pressed="false" title="在成图左上角叠加抖音商城 Logo"><span>左上角 Logo</span></button>
+                      <button type="button" class="tool-button overlay-toggle" id="includeSearchOverlayButton" aria-pressed="false" title="在成图右下角叠加活动搜索框"><span>右下角搜索框</span></button>
+                    </div>
+                    <button type="submit" id="runButton" class="send-button" title="运行链路"><img src="/ui-assets/runButton.png" alt="" /></button>
+                  </div>
+                </form>
+              </div>
             </div>
 
-            <form id="briefForm" class="prompt-dock" enctype="multipart/form-data">
-              <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
-              <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
-              <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
-              <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
-              <input name="generate_image" type="checkbox" checked hidden />
-              <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
-
-              <div id="sizePopover" class="floating-picker size-picker hidden"></div>
-
-              <div id="referenceStrip" class="reference-strip hidden"></div>
-
-              <div class="text-wrap">
-                <textarea
-                  id="visualDescriptionInput"
-                  name="visual_description"
-                  placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。"
-                  required
-                ></textarea>
-                <div id="mentionMenu" class="mention-menu hidden"></div>
+            <aside id="chatPanel" class="chat-panel">
+              <div class="chat-head">设计对话</div>
+              <div id="chatMessages" class="chat-messages">
+                <div class="chat-empty">输入想法可基于当前画布继续生成新变体；选中画布中的图后，可针对该图直接修改。</div>
               </div>
-
-              <div class="dock-actions">
-                <div class="dock-tools">
-                  <button type="button" class="tool-button square" id="uploadTrigger" title="上传图片">
-                    <img src="/ui-assets/jia.png" alt="" />
-                  </button>
-                  <button type="button" class="tool-button" id="stylePickerButton">
-                    <img id="stylePickerIcon" class="tool-icon-img" src="/ui-assets/fengge.png" alt="" />
-                    <span id="stylePickerLabel">风格预设</span>
-                  </button>
-                  <button type="button" class="tool-button" id="sizePickerButton">
-                    <span id="sizeIcon" class="size-icon ratio-34"></span>
-                    <span id="sizeText">3:4</span>
-                  </button>
-                  <button type="button" class="tool-button" id="expandDescriptionButton">
-                    <img class="tool-icon-img" src="/ui-assets/size.png" alt="" />
-                    <span>扩写</span>
-                  </button>
-                  <button type="button" class="tool-button doudou-toggle" id="doudouIpButton" aria-pressed="false">
-                    <img class="tool-icon-img doudou-icon" src="/doudou/6视图/22-1.png" alt="" />
-                    <span>兜兜IP</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="tool-button overlay-toggle"
-                    id="includeLogoButton"
-                    aria-pressed="false"
-                    title="在成图左上角叠加抖音商城 Logo"
-                  >
-                    <span>左上角 Logo</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="tool-button overlay-toggle"
-                    id="includeSearchOverlayButton"
-                    aria-pressed="false"
-                    title="在成图右下角叠加活动搜索框"
-                  >
-                    <span>右下角搜索框</span>
-                  </button>
-                </div>
-                <input
-                  id="adminTokenInput"
-                  class="admin-token-input"
-                  type="password"
-                  placeholder="管理令牌"
-                  autocomplete="off"
-                  title="管理令牌（ADMIN_TOKEN），用于生成、上传与删除等写接口"
-                />
-                <button type="submit" id="runButton" class="send-button" title="运行链路">
-                  <img src="/ui-assets/runButton.png" alt="" />
-                </button>
+              <div class="chat-input-row">
+                <textarea id="chatInput" rows="2" placeholder="继续提问..." autocomplete="off"></textarea>
+                <button id="chatSendButton" type="button" title="发送">↑</button>
               </div>
-            </form>
+            </aside>
           </div>
         </section>
 
         <section id="assetsPage" class="neo-page assets-page">
-          <div class="page-content narrow">
-            <h1>资产</h1>
-            <div id="assetsList" class="asset-timeline empty-state">正在读取资产...</div>
+          <div class="page-content">
+            <div class="projects-head">
+              <h1>项目</h1>
+              <button id="newProjectFromProjectsButton" type="button" class="primary-btn">新建项目</button>
+            </div>
+            <div id="projectsGrid" class="project-grid empty-state">正在读取项目...</div>
           </div>
         </section>
 
@@ -180,7 +164,7 @@
 
         <section id="materialsPage" class="neo-page materials-page">
           <div class="page-content">
-            <h1>素材库管理</h1>
+            <h1>灵感</h1>
             <div class="tabs" id="libraryTabs">
               <div class="material-tab-list" role="tablist" aria-label="按参考用途筛选">
                 <button type="button" class="tab-button active" data-material-tab="全部">全部</button>

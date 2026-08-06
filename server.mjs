@@ -2388,6 +2388,91 @@ async function deleteProjectById(rawId) {
   return project;
 }
 
+async function deleteProjectElementById(projectId, elementId) {
+  const projects = await getProjects();
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) return null;
+  const index = (project.elements || []).findIndex((element) => element.id === elementId);
+  if (index < 0) return null;
+  const [removed] = project.elements.splice(index, 1);
+  const stillUsedByProject = (project.elements || []).some((element) => element.object_key === removed.object_key);
+  if (!stillUsedByProject) {
+    const assets = await loadAssetsIndex();
+    const asset = assets.find((item) => item.object_key === removed.object_key);
+    if (asset) {
+      await deleteAssetByName(asset.name);
+    } else {
+      await storageDelete(removed.object_key);
+    }
+  }
+  if (project.thumbnail === removed.object_key) {
+    const lastKv = [...project.elements].reverse().find((element) => element.kind === "kv");
+    project.thumbnail = lastKv?.object_key || "";
+  }
+  project.updated_at = new Date().toISOString();
+  await saveProjectsIndex(projects);
+  return removed;
+}
+
+async function editProjectElement(projectId, elementId, instruction) {
+  const text = textOf(instruction).trim();
+  if (!text) throw httpError(400, "请输入修改要求");
+  if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI");
+  const projects = await getProjects();
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) throw httpError(404, "未找到该项目");
+  const element = (project.elements || []).find((item) => item.id === elementId);
+  if (!element) throw httpError(404, "未找到该画布元素");
+  const sourceBytes = await storageGet(element.object_key);
+  const filename = `kv-edit-${Date.now()}-${crypto.randomBytes(3).toString("hex")}.png`;
+  const key = outputKey(filename);
+  const form = new FormData();
+  form.append("model", IMAGE_MODEL);
+  form.append(
+    "prompt",
+    `这是用户已生成的营销 KV 图。请根据用户要求修改画面：${text}。保持整体版式、已有文字、品牌、色彩和主体稳定，只做要求中的调整；不要新增无关文字、品牌、水印或元素。`,
+  );
+  form.append("size", SIZE_MAP["3:4"] || "1024x1536");
+  form.append("quality", "medium");
+  form.append("output_format", "png");
+  form.append("image[]", new Blob([sourceBytes], { type: "image/png" }), filename);
+  const response = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
+    body: form,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error?.message || `OpenAI Images API 请求失败：${response.status}`);
+  }
+  const b64 = payload.data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI 没有返回编辑后的图片");
+  await storagePut(key, Buffer.from(b64, "base64"), { contentType: "image/png" });
+  const newElement = {
+    id: newProjectElementId(),
+    kind: "kv",
+    name: filename,
+    object_key: key,
+    created_at: new Date().toISOString(),
+    edit_of: element.id,
+  };
+  project.elements = [...(project.elements || []), newElement];
+  project.thumbnail = key;
+  project.updated_at = newElement.created_at;
+  await saveProjectsIndex(projects);
+  await persistAssetRecord({
+    image_result: { skipped: false, name: filename, object_key: key, layers: null },
+    request: {
+      campaign_name: project.title,
+      campaign_subtitle: "",
+      campaign_time: "",
+      visual_description: text,
+      uploaded_references: [],
+    },
+  }).catch(() => {});
+  return newElement;
+}
+
 async function listAssets() {
   const index = await loadAssetsIndex();
   const decorated = index.map(decorateAssetUrls);
@@ -6801,7 +6886,7 @@ const server = createServer(async (req, res) => {
       }
       const element = {
         id: newProjectElementId(),
-        kind: body.kind === "typography" ? "typography" : "kv",
+        kind: ["typography", "kv", "title", "background", "package"].includes(body.kind) ? body.kind : "kv",
         name: body.name || objectKey.split("/").pop(),
         object_key: objectKey,
         created_at: new Date().toISOString(),
@@ -6813,6 +6898,37 @@ const server = createServer(async (req, res) => {
         await saveProjectsIndex(projects);
       }
       jsonResponse(res, 200, decorateProject(project));
+      return;
+    }
+
+    const projectElementEditMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/elements\/([^/]+)\/edit$/);
+    if (projectElementEditMatch && req.method === "POST") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      const body = await readJsonBody(req);
+      const projectId = decodeURIComponent(projectElementEditMatch[1]);
+      await editProjectElement(projectId, decodeURIComponent(projectElementEditMatch[2]), body.instruction);
+      const projects = await getProjects();
+      const project = projects.find((item) => item.id === projectId);
+      jsonResponse(res, 200, decorateProject(project || { elements: [] }));
+      return;
+    }
+
+    const projectElementDeleteMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/elements\/([^/]+)$/);
+    if (projectElementDeleteMatch && req.method === "DELETE") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      const removed = await deleteProjectElementById(
+        decodeURIComponent(projectElementDeleteMatch[1]),
+        decodeURIComponent(projectElementDeleteMatch[2]),
+      );
+      if (!removed) {
+        jsonResponse(res, 404, { error: "未找到该画布元素" });
+        return;
+      }
+      const projects = await getProjects();
+      const project = projects.find((item) => item.id === projectElementDeleteMatch[1]);
+      jsonResponse(res, 200, decorateProject(project || { elements: [] }));
       return;
     }
 
