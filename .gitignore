@@ -13,6 +13,7 @@ uploads/references/*
 !uploads/references/.gitkeep
 archives/
 release-bundles/
+vision.cjs
 
 # Review / speech materials are not runtime resources.
 case/
