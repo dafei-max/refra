@@ -5,47 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aeye KV Studio</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/canvas-flow.css" />
   </head>
   <body>
     <div class="neo-app">
-      <header class="neo-brand" aria-label="Aeye design">
-        <img src="/ui-assets/neo-brand.png" alt="灵眸 Aeye design" />
+      <header class="neo-topbar">
+        <div class="neo-brand">
+          <img src="/ui-assets/neo-brand.png" alt="灵眸 Aeye design" />
+        </div>
+        <nav class="topbar-nav" aria-label="主导航">
+          <button type="button" class="rail-item active" data-view-target="generate" id="generateButton">
+            <img src="/ui-assets/icon/nav-generate.png" alt="" /><span>生成</span>
+          </button>
+          <button type="button" class="rail-item" data-view-target="assets" id="assetsButton">
+            <img src="/ui-assets/icon/nav-projects.png" alt="" /><span>项目</span>
+          </button>
+          <button type="button" class="rail-item" data-view-target="styles" id="styleButton">
+            <img src="/ui-assets/icon/nav-style.png" alt="" /><span>风格</span>
+          </button>
+          <button type="button" class="rail-item" data-view-target="materials" id="libraryButton">
+            <img src="/ui-assets/icon/nav-inspiration.png" alt="" /><span>灵感</span>
+          </button>
+        </nav>
+        <div class="topbar-actions">
+          <button id="inviteButton" type="button" class="invite-btn">Invite</button>
+        </div>
       </header>
-
-      <nav class="side-rail" aria-label="主导航">
-        <button type="button" class="rail-item active" data-view-target="generate" id="generateButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/generate-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/generate-click.png" alt="" />
-          </span>
-          <span>生成</span>
-        </button>
-        <button type="button" class="rail-item" data-view-target="assets" id="assetsButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/assets-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/assets-click.png" alt="" />
-          </span>
-          <span>资产</span>
-        </button>
-        <button type="button" class="rail-item" data-view-target="styles" id="styleButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/style-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/style-click.png" alt="" />
-          </span>
-          <span>风格</span>
-        </button>
-        <button type="button" class="rail-item" data-view-target="materials" id="libraryButton">
-          <span class="rail-icon">
-            <img class="icon-default" src="/ui-assets/icon/material-default.png" alt="" />
-            <img class="icon-click" src="/ui-assets/icon/material-click.png" alt="" />
-          </span>
-          <span>素材</span>
-        </button>
-      </nav>
 
       <main class="neo-main">
         <section id="generatePage" class="neo-page generate-page active">
           <div id="errorBox" class="toast hidden"></div>
+
+          <h1 class="home-title">今天想创作什么？</h1>
 
           <section id="generationStory" class="generation-story hidden">
             <h1 id="storyTitle"></h1>
@@ -56,33 +47,6 @@
           </section>
 
           <div class="prompt-stack">
-            <div class="brief-top-row">
-              <input
-                id="campaignNameInput"
-                class="title-input"
-                form="briefForm"
-                name="campaign_name"
-                placeholder="活动名称（选填）"
-                autocomplete="off"
-              />
-              <input
-                id="campaignSubtitleInput"
-                class="subtitle-input"
-                form="briefForm"
-                name="campaign_subtitle"
-                placeholder="副标题"
-                autocomplete="off"
-              />
-              <input
-                id="campaignTimeInput"
-                class="time-input"
-                form="briefForm"
-                name="campaign_time"
-                placeholder="活动时间"
-                autocomplete="off"
-              />
-            </div>
-
             <form id="briefForm" class="prompt-dock" enctype="multipart/form-data">
               <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
               <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
@@ -92,6 +56,15 @@
               <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
 
               <div id="sizePopover" class="floating-picker size-picker hidden"></div>
+
+              <div class="brief-top-row">
+                <span class="brief-guide">主标题为</span>
+                <input id="campaignNameInput" class="title-input" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
+                <span class="brief-guide">，副标题为</span>
+                <input id="campaignSubtitleInput" class="subtitle-input" name="campaign_subtitle" placeholder="副标题" autocomplete="off" />
+                <span class="brief-guide">，活动时间为</span>
+                <input id="campaignTimeInput" class="time-input" name="campaign_time" placeholder="活动时间" autocomplete="off" />
+              </div>
 
               <div id="referenceStrip" class="reference-strip hidden"></div>
 
@@ -154,10 +127,28 @@
                   title="管理令牌（ADMIN_TOKEN），用于生成、上传与删除等写接口"
                 />
                 <button type="submit" id="runButton" class="send-button" title="运行链路">
-                  <img src="/ui-assets/runButton.png" alt="" />
+                  <svg class="sparkle-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" />
+                  </svg>
                 </button>
               </div>
             </form>
+          </div>
+
+          <div class="home-module">
+            <div class="home-module-head">
+              <h2>最近项目</h2>
+              <button id="recentProjectsMore" type="button" class="text-link">查看全部 →</button>
+            </div>
+            <div id="recentProjects" class="project-grid empty-state">加载中...</div>
+          </div>
+
+          <div class="home-module">
+            <div class="home-module-head">
+              <h2>灵感发现</h2>
+              <button id="homeInspirationMore" type="button" class="text-link">查看全部 →</button>
+            </div>
+            <div id="homeInspiration" class="material-masonry empty-state">加载中...</div>
           </div>
         </section>
 
@@ -240,7 +231,25 @@
             <div id="libraryList" class="material-masonry empty-state">正在读取素材库...</div>
           </div>
         </section>
+
+        <section id="canvasPage" class="neo-page canvas-page">
+          <div id="canvasRoot"></div>
+        </section>
       </main>
+    </div>
+
+    <div id="inviteModal" class="invite-modal hidden">
+      <button type="button" class="invite-scrim" data-close-invite aria-label="关闭"></button>
+      <section class="invite-card" role="dialog" aria-modal="true" aria-label="邀请">
+        <div class="invite-card-head">
+          <h3>ADMIN_TOKEN</h3>
+          <button type="button" class="close-round" data-close-invite>×</button>
+        </div>
+        <div class="invite-card-body">
+          <div id="inviteTokenBox" class="invite-token-box"></div>
+          <button id="inviteCopyButton" type="button" class="invite-copy-btn">复制</button>
+        </div>
+      </section>
     </div>
 
     <div id="materialDetailModal" class="detail-modal hidden">
@@ -314,5 +323,6 @@
     <form id="xlsxForm" class="hidden"></form>
     <div id="stylePresetSection" class="style-picker hidden"></div>
     <script src="/app.js"></script>
+    <script src="/canvas-app.js"></script>
   </body>
 </html>

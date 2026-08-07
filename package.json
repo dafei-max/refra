@@ -7,9 +7,16 @@
     "ali-oss": "^6.23.0"
   },
   "scripts": {
+    "build:canvas": "esbuild frontend/canvas.jsx --bundle --minify --outfile=public/canvas-app.js --define:process.env.NODE_ENV='\"production\"' --log-level=warning",
     "export:materials": "python3 tools/export_materials.py",
     "sync:preset-materials": "node tools/sync_preset_materials.mjs",
     "start": "node server.mjs",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "@xyflow/react": "^12.11.2",
+    "esbuild": "^0.25.12",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }
