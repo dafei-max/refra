@@ -10,8 +10,12 @@ const recentProjectsMore = document.querySelector("#recentProjectsMore");
 const homeInspirationMore = document.querySelector("#homeInspirationMore");
 const inviteButton = document.querySelector("#inviteButton");
 const inviteModal = document.querySelector("#inviteModal");
-const inviteTokenBox = document.querySelector("#inviteTokenBox");
-const inviteCopyButton = document.querySelector("#inviteCopyButton");
+const inviteTokenInput = document.querySelector("#inviteTokenInput");
+const inviteEyeButton = document.querySelector("#inviteEyeButton");
+const inviteEyeIcon = document.querySelector("#inviteEyeIcon");
+const inviteError = document.querySelector("#inviteError");
+const inviteConfirmButton = document.querySelector("#inviteConfirmButton");
+const projectsGrid = document.querySelector("#projectsGrid");
 
 function adminToken() {
   return (localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim();
@@ -1204,11 +1208,7 @@ function renderAssets(items) {
 }
 
 async function loadAssets() {
-  const response = await fetch("/api/assets");
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "读取资产失败");
-  renderAssets(payload.assets || []);
-  return payload.assets || [];
+  return loadProjects();
 }
 
 function renderStyleList() {
@@ -1703,40 +1703,71 @@ function projectRelativeTime(iso) {
   return new Date(iso).toLocaleDateString("zh-CN");
 }
 
-async function loadRecentProjects() {
-  const response = await fetch("/api/assets");
+async function fetchProjects() {
+  const response = await fetch("/api/projects");
   const payload = await response.json();
-  const assets = (payload.assets || []).sort(
-    (a, b) => new Date(b.modified_at || b.created_at || 0) - new Date(a.modified_at || a.created_at || 0),
-  );
-  recentProjects.innerHTML = assets.length
-    ? assets.slice(0, 4).map((asset) => `
-        <article class="project-card" data-asset-url="${escapeHtml(asset.url || "")}">
-          <div class="project-card-thumb">${asset.url ? `<img src="${escapeHtml(asset.url)}" alt="" loading="lazy" />` : ""}</div>
-          <div class="project-card-body"><h3>${escapeHtml(asset.title || asset.name || "未命名项目")}</h3><p>${projectRelativeTime(asset.modified_at || asset.created_at)}</p></div>
-        </article>`).join("")
-    : `<div class="empty-state">暂无项目，去生成第一张吧</div>`;
-  recentProjects.querySelectorAll("[data-asset-url]").forEach((card) => {
+  if (!response.ok) throw new Error(payload.error || "读取项目失败");
+  return payload.projects || [];
+}
+
+function projectCardHtml(project) {
+  return `<article class="project-card" data-project-id="${escapeHtml(project.id)}">
+    <div class="project-card-thumb placeholder"><span>▧</span></div>
+    <div class="project-card-body">
+      <h3>${escapeHtml(project.title || "Untitled")}</h3>
+      <p>${projectRelativeTime(project.updated_at || project.created_at)}</p>
+    </div>
+  </article>`;
+}
+
+function newProjectCardHtml() {
+  return `<div class="project-card project-card-new" data-new-project>
+    <div class="project-card-thumb placeholder"><span>＋</span></div>
+    <div class="project-card-body"><h3>新建项目</h3><p>创建新的无限画布</p></div>
+  </div>`;
+}
+
+function renderProjectsInto(container, projects, { withNewCard = false, limit = 0 } = {}) {
+  const list = limit > 0 ? projects.slice(0, limit) : projects;
+  const cards = [...(withNewCard ? [newProjectCardHtml()] : []), ...list.map(projectCardHtml)];
+  container.classList.remove("empty-state");
+  container.innerHTML = cards.length ? cards.join("") : `<div class="empty-state">暂无项目，去生成第一张吧</div>`;
+  if (withNewCard) {
+    container.querySelector("[data-new-project]")?.addEventListener("click", () => {
+      createProject().catch((error) => setError(error.message));
+    });
+  }
+  container.querySelectorAll("[data-project-id]").forEach((card) => {
     card.addEventListener("click", () => {
-      const url = card.dataset.assetUrl;
-      if (url) window.open(url, "_blank");
+      openCanvas(card.dataset.projectId).catch((error) => setError(error.message));
     });
   });
+}
+
+async function loadProjects() {
+  const projects = await fetchProjects();
+  renderProjectsInto(projectsGrid, projects, { withNewCard: true });
+  return projects;
+}
+
+async function loadRecentProjects() {
+  const projects = await fetchProjects().catch(() => []);
+  renderProjectsInto(recentProjects, projects, { withNewCard: true, limit: 4 });
 }
 
 async function loadHomeInspiration() {
   const payload = await fetch("/api/materials").then((response) => response.json()).catch(() => ({ materials: [] }));
   const list = (payload.materials || []).slice(0, 8);
+  homeInspiration.classList.remove("empty-state");
   homeInspiration.innerHTML = list.length
     ? list.map((material) => `
-        <figure class="inspiration-tile" data-material-number="${escapeHtml(material.number || "")}">
+        <button type="button" class="material-thumb" data-material-number="${escapeHtml(material.number || "")}">
           <img src="${escapeHtml(material.image || "")}" alt="" loading="lazy" />
-          <figcaption>${escapeHtml(material.title || material.number || "")}</figcaption>
-        </figure>`).join("")
+        </button>`).join("")
     : `<div class="empty-state">暂无灵感素材</div>`;
-  homeInspiration.querySelectorAll("[data-material-number]").forEach((tile) => {
-    tile.addEventListener("click", () => {
-      const material = (payload.materials || []).find((item) => item.number === tile.dataset.materialNumber);
+  homeInspiration.querySelectorAll("[data-material-number]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const material = (payload.materials || []).find((item) => item.number === button.dataset.materialNumber);
       if (material) {
         activeMaterial = material;
         openMaterialDetail(material);
@@ -1744,6 +1775,66 @@ async function loadHomeInspiration() {
     });
   });
 }
+
+async function createProject() {
+  const response = await apiFetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Untitled" }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "创建项目失败");
+  await openCanvas(payload.id);
+}
+
+async function openCanvas(projectId, init = null) {
+  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "读取项目失败");
+  showView("canvas");
+  if (window.__startCanvasSession) {
+    window.__startCanvasSession(init ? { ...init, projectId, project: payload } : { projectId, project: payload });
+  }
+}
+
+window.__canvasTool = (action, event) => {
+  if (action === "upload") {
+    uploadTrigger.click();
+  } else if (action === "style") {
+    stylePickerButton.click();
+  } else if (action === "size") {
+    const anchor = event?.currentTarget || sizePickerButton;
+    const rect = anchor.getBoundingClientRect();
+    sizePopover.style.left = `${Math.max(8, rect.left)}px`;
+    sizePopover.style.top = `${Math.max(8, rect.top - sizePopover.offsetHeight - 8)}px`;
+    sizePopover.style.position = "fixed";
+    sizePickerButton.click();
+  } else if (action === "expand") {
+    if (window.__canvasPromptValue && window.__canvasPromptValue.trim()) {
+      visualDescriptionInput.value = window.__canvasPromptValue.trim();
+    }
+    expandDescriptionButton.click();
+  }
+};
+
+window.__getCanvasSettings = () => ({
+  campaign_name: campaignNameInput.value.trim(),
+  campaign_subtitle: campaignSubtitleInput.value.trim(),
+  campaign_time: campaignTimeInput.value.trim(),
+  image_size: imageSizeInput.value,
+  style_preset: stylePresetInput.value,
+  integrated_layout_variant: integratedLayoutInput.value,
+  doudou_ip: doudouIpInput.value === "true",
+  include_logo: isToolToggleEnabled(includeLogoButton),
+  include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
+});
+
+window.__getReferenceFiles = () => referenceFiles.map((item) => item.file);
+
+window.__saveCanvasRequested = null;
+window.__requestCanvasSave = () => {
+  if (window.__saveCanvasRequested) window.__saveCanvasRequested();
+};
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1766,9 +1857,16 @@ form.addEventListener("submit", async (event) => {
     include_logo: isToolToggleEnabled(includeLogoButton),
     include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
     files: referenceFiles.map((item) => item.file),
+    autoGenerate: true,
   };
-  showView("canvas");
-  if (window.__startCanvasSession) window.__startCanvasSession(init);
+  const response = await apiFetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, title: campaignNameInput.value.trim() || "Untitled" }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "创建项目失败");
+  await openCanvas(payload.id, init);
 });
 
 uploadTrigger.addEventListener("click", () => referenceImageInput.click());
@@ -1820,11 +1918,20 @@ generateButton.addEventListener("click", () => {
   loadRecentProjects().catch(() => {});
   loadHomeInspiration().catch(() => {});
 });
+
+document.querySelector(".neo-topbar .neo-brand")?.addEventListener("click", () => {
+  if (document.querySelector("#canvasPage")?.classList.contains("active")) {
+    if (window.__requestCanvasSave) window.__requestCanvasSave();
+  }
+  showView("generate");
+  loadRecentProjects().catch(() => {});
+  loadHomeInspiration().catch(() => {});
+});
 assetsButton.addEventListener("click", () => {
   showView("assets");
   loadAssets().catch((error) => {
-    assetsList.className = "asset-timeline empty-state";
-    assetsList.textContent = error.message;
+    projectsGrid.className = "project-grid empty-state";
+    projectsGrid.textContent = error.message;
   });
 });
 styleButton.addEventListener("click", () => {
@@ -1850,8 +1957,22 @@ homeInspirationMore.addEventListener("click", () => {
   loadLibrary().catch((error) => setError(error.message));
 });
 
+let inviteTokenValue = "";
+let inviteTokenVisible = false;
+
+function maskAdminToken(value) {
+  const text = String(value || "");
+  if (text.length <= 11) return text;
+  return `${text.slice(0, 7)}****${text.slice(-4)}`;
+}
+
 inviteButton.addEventListener("click", () => {
-  inviteTokenBox.textContent = adminToken() || "尚未设置 ADMIN_TOKEN，请先在管理令牌输入框填写";
+  inviteTokenValue = adminToken();
+  inviteTokenVisible = false;
+  inviteTokenInput.type = "password";
+  inviteTokenInput.value = inviteTokenValue;
+  inviteEyeIcon.src = "/ui-assets/icon/show.png";
+  inviteError.classList.add("hidden");
   inviteModal.classList.remove("hidden");
 });
 
@@ -1859,17 +1980,56 @@ document.querySelectorAll("[data-close-invite]").forEach((el) => {
   el.addEventListener("click", () => inviteModal.classList.add("hidden"));
 });
 
-inviteCopyButton.addEventListener("click", async () => {
-  const text = inviteTokenBox.textContent || "";
-  try {
-    await navigator.clipboard.writeText(text);
-    inviteCopyButton.textContent = "已复制";
-    setTimeout(() => {
-      inviteCopyButton.textContent = "复制";
-    }, 1600);
-  } catch {
-    inviteCopyButton.textContent = "复制失败";
+inviteEyeButton.addEventListener("click", () => {
+  inviteTokenVisible = !inviteTokenVisible;
+  if (inviteTokenVisible) {
+    inviteTokenInput.type = "text";
+    inviteTokenInput.value = maskAdminToken(inviteTokenValue);
+    inviteEyeIcon.src = "/ui-assets/icon/hide.png";
+  } else {
+    inviteTokenInput.type = "password";
+    inviteTokenInput.value = inviteTokenValue;
+    inviteEyeIcon.src = "/ui-assets/icon/show.png";
   }
+  inviteTokenInput.focus();
+});
+
+inviteTokenInput.addEventListener("input", () => {
+  inviteTokenValue = inviteTokenInput.value;
+  inviteError.classList.add("hidden");
+});
+
+async function validateAdminToken(token) {
+  try {
+    const response = await fetch("/api/expand-description", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
+    });
+    return response.status !== 401;
+  } catch {
+    return false;
+  }
+}
+
+inviteConfirmButton.addEventListener("click", async () => {
+  const token = inviteTokenValue.trim();
+  if (!token) {
+    inviteError.textContent = "请输入 ADMIN_TOKEN";
+    inviteError.classList.remove("hidden");
+    return;
+  }
+  inviteConfirmButton.disabled = true;
+  const ok = await validateAdminToken(token);
+  inviteConfirmButton.disabled = false;
+  if (!ok) {
+    inviteError.textContent = "ADMIN_TOKEN 输入错误，请重新输入";
+    inviteError.classList.remove("hidden");
+    return;
+  }
+  localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  if (adminTokenInput) adminTokenInput.value = token;
+  inviteModal.classList.add("hidden");
 });
 
 libraryTabs.querySelectorAll("[data-material-tab]").forEach((button) => {

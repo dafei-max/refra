@@ -62,3 +62,23 @@ curl --fail http://localhost:5199/api/health
 - 不提交 `outputs/`、临时上传、密钥、日志或无关素材。
 - 只有用户明确要求时才 push；push 前再次确认分支和远端。
 - 不使用 `git reset --hard`、`git checkout -- .` 等破坏性命令。
+
+## 识图能力
+
+需要识别、描述或分析图片内容时，使用 `vision.cjs` 调用 vision 模型，不要直接尝试读取图片文件：
+
+```bash
+node vision.cjs "<图片路径>" "用中文描述这张图片"
+```
+
+支持本地路径和网络 URL（后者加 `--url` 参数）。
+
+### 触发场景
+
+- 用户分享图片路径（本地或网络 URL）
+- 消息中出现 "Saved attachments:" 并列出图片
+- 用户要求分析、描述、识别图片内容
+
+### 配置
+
+配置在 `.env`（已 gitignore，不提交）：`DASHSCOPE_API_KEY`、`VISION_MODEL`（如 `qwen3.7-plus`）、`DASHSCOPE_BASE_URL`，说明见 `.env.example` 中的识图部分。

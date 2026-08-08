@@ -2246,6 +2246,206 @@ async function saveAssetsIndex(assets) {
   return assets;
 }
 
+const PROJECTS_INDEX_KEY = "data/projects.json";
+
+function newProjectId() {
+  return `p_${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function newProjectElementId() {
+  return `e_${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+}
+
+function newProjectMessageId() {
+  return `m_${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+}
+
+async function loadProjectsIndex() {
+  try {
+    const payload = JSON.parse((await storageGet(PROJECTS_INDEX_KEY)).toString("utf-8"));
+    return Array.isArray(payload?.projects) ? payload.projects : [];
+  } catch (error) {
+    if (!(error instanceof StorageError)) throw error;
+    return null;
+  }
+}
+
+async function saveProjectsIndex(projects) {
+  const payload = JSON.stringify({ source: "project-index", count: projects.length, projects }, null, 2);
+  await storagePut(PROJECTS_INDEX_KEY, Buffer.from(payload, "utf-8"), { contentType: "application/json" });
+  return projects;
+}
+
+async function getProjects() {
+  const projects = await loadProjectsIndex();
+  if (projects !== null) return projects;
+  const assets = await loadAssetsIndex();
+  const seeded = assets.map((asset) => ({
+    id: `p_legacy_${String(asset.name || "asset").replace(/\.[^.]+$/, "").replace(/[^\w-]/g, "_")}`,
+    title: textOf(asset.title || asset.name).trim() || "历史项目",
+    prompt: textOf(asset.description).trim(),
+    created_at: asset.created_at || new Date().toISOString(),
+    updated_at: asset.modified_at || asset.created_at || new Date().toISOString(),
+    thumbnail: asset.object_key || "",
+    elements: [
+      ...(asset.layers?.typography?.object_key
+        ? [{ id: newProjectElementId(), kind: "typography", name: asset.layers.typography.object_key.split("/").pop(), object_key: asset.layers.typography.object_key, created_at: asset.created_at }]
+        : []),
+      ...(asset.object_key
+        ? [{ id: newProjectElementId(), kind: "kv", name: String(asset.name || ""), object_key: asset.object_key, created_at: asset.created_at }]
+        : []),
+    ],
+    messages: [],
+  }));
+  await saveProjectsIndex(seeded);
+  return seeded;
+}
+
+function decorateProject(project = {}) {
+  return {
+    ...project,
+    thumbnail_url: project.thumbnail ? storageSignUrl(project.thumbnail) : "",
+    elements: (project.elements || []).map((element) => ({
+      ...element,
+      url: element.object_key ? storageSignUrl(element.object_key) : "",
+    })),
+  };
+}
+
+function elementsFromImageResult(result) {
+  const image = result?.image_result;
+  if (!image || image.skipped) return [];
+  const now = new Date().toISOString();
+  const elements = [];
+  const typoKey = image.layers?.typography?.object_key;
+  const sceneKey = image.layers?.scene?.object_key;
+  if (typoKey) {
+    elements.push({ id: newProjectElementId(), kind: "typography", name: typoKey.split("/").pop(), object_key: typoKey, created_at: now });
+  }
+  if (sceneKey) {
+    elements.push({ id: newProjectElementId(), kind: "kv", name: sceneKey.split("/").pop(), object_key: sceneKey, created_at: now });
+  }
+  if (!elements.length && image.object_key) {
+    elements.push({ id: newProjectElementId(), kind: "kv", name: String(image.name || image.object_key.split("/").pop()), object_key: image.object_key, created_at: now });
+  }
+  return elements;
+}
+
+async function appendGenerationToProject(projectId, result) {
+  const projects = await getProjects();
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) return null;
+  const added = elementsFromImageResult(result);
+  if (!added.length) return project;
+  const existingKeys = new Set((project.elements || []).map((element) => element.object_key).filter(Boolean));
+  const unique = added.filter((element) => !existingKeys.has(element.object_key));
+  if (!unique.length) return project;
+  project.elements = [...(project.elements || []), ...unique];
+  const finalElement = unique.find((element) => element.kind === "kv");
+  if (finalElement) project.thumbnail = finalElement.object_key;
+  project.updated_at = new Date().toISOString();
+  await saveProjectsIndex(projects);
+  return project;
+}
+
+async function appendProjectMessage(projectId, role, content) {
+  const projects = await getProjects();
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) return null;
+  const message = {
+    id: newProjectMessageId(),
+    role: role === "assistant" ? "assistant" : "user",
+    content: textOf(content).trim().slice(0, 4000),
+    created_at: new Date().toISOString(),
+  };
+  project.messages = [...(project.messages || []), message];
+  project.updated_at = message.created_at;
+  await saveProjectsIndex(projects);
+  return message;
+}
+
+async function saveProjectCanvas(projectId, { title, elements }) {
+  const projects = await getProjects();
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) return null;
+  if (title && textOf(title).trim()) project.title = textOf(title).trim().slice(0, 60);
+  if (Array.isArray(elements)) {
+    const byKey = new Map((project.elements || []).map((element) => [element.object_key, element]));
+    for (const element of elements) {
+      if (!element || !element.object_key) continue;
+      const key = textOf(element.object_key);
+      if (!key) continue;
+      const existing = byKey.get(key);
+      if (existing) {
+        if (Number.isFinite(Number(element.x))) existing.x = Number(element.x);
+        if (Number.isFinite(Number(element.y))) existing.y = Number(element.y);
+        if (textOf(element.name)) existing.name = textOf(element.name);
+      } else {
+        byKey.set(key, {
+          id: textOf(element.id) || newProjectElementId(),
+          kind: ["typography", "kv", "title", "background", "package"].includes(element.kind) ? element.kind : "kv",
+          name: textOf(element.name) || key.split("/").pop(),
+          object_key: key,
+          x: Number.isFinite(Number(element.x)) ? Number(element.x) : 0,
+          y: Number.isFinite(Number(element.y)) ? Number(element.y) : 0,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+    project.elements = [...byKey.values()];
+    const lastKv = [...project.elements].reverse().find((element) => element.kind === "kv");
+    if (lastKv) project.thumbnail = lastKv.object_key;
+  }
+  project.updated_at = new Date().toISOString();
+  await saveProjectsIndex(projects);
+  return project;
+}
+
+async function deleteProjectById(rawId) {
+  const id = String(rawId || "").trim();
+  if (!id) return null;
+  const projects = await getProjects();
+  const project = projects.find((item) => item.id === id);
+  if (!project) return null;
+  const elementKeys = new Set((project.elements || []).map((element) => element.object_key).filter(Boolean));
+  for (const key of elementKeys) await storageDelete(key);
+  const assets = await loadAssetsIndex();
+  const removedAssets = assets.filter((asset) => elementKeys.has(asset.object_key));
+  if (removedAssets.length) {
+    const removedKeys = new Set(removedAssets.flatMap((asset) => collectAssetKeys(asset)));
+    for (const key of removedKeys) await storageDelete(key);
+    await saveAssetsIndex(assets.filter((asset) => !removedKeys.has(asset.object_key)));
+  }
+  await saveProjectsIndex(projects.filter((item) => item.id !== id));
+  return project;
+}
+
+async function deleteProjectElementById(projectId, elementId) {
+  const projects = await getProjects();
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) return null;
+  const index = (project.elements || []).findIndex((element) => element.id === elementId);
+  if (index < 0) return null;
+  const [removed] = project.elements.splice(index, 1);
+  const stillUsedByProject = (project.elements || []).some((element) => element.object_key === removed.object_key);
+  if (!stillUsedByProject) {
+    const assets = await loadAssetsIndex();
+    const asset = assets.find((item) => item.object_key === removed.object_key);
+    if (asset) {
+      await deleteAssetByName(asset.name);
+    } else {
+      await storageDelete(removed.object_key);
+    }
+  }
+  if (project.thumbnail === removed.object_key) {
+    const lastKv = [...project.elements].reverse().find((element) => element.kind === "kv");
+    project.thumbnail = lastKv?.object_key || "";
+  }
+  project.updated_at = new Date().toISOString();
+  await saveProjectsIndex(projects);
+  return removed;
+}
+
 async function listAssets() {
   const index = await loadAssetsIndex();
   const decorated = index.map(decorateAssetUrls);
@@ -6311,6 +6511,13 @@ async function runPipeline(request, onStage = () => {}) {
     } catch (error) {
       warnings.push({ stage: "asset-persist", message: error.message });
     }
+    if (result.request?.project_id) {
+      try {
+        await appendGenerationToProject(result.request.project_id, result);
+      } catch (error) {
+        warnings.push({ stage: "project-append", message: error.message });
+      }
+    }
   }
   onStage("complete", result);
   return result;
@@ -6330,6 +6537,7 @@ function validateRequest(body) {
     image_size: body.image_size,
     style_preset: stylePreset,
     integrated_layout_variant: textOf(body.integrated_layout_variant).trim(),
+    project_id: textOf(body.project_id).trim(),
     generate_image: body.generate_image === true || body.generate_image === "true" || body.generate_image === "on" || body.generate_image === "1",
     uploaded_references: Array.isArray(body.uploaded_references) ? body.uploaded_references.filter(Boolean) : [],
     reference_labels: Array.isArray(body.reference_labels) ? body.reference_labels : [],
@@ -6546,6 +6754,121 @@ const server = createServer(async (req, res) => {
         return;
       }
       jsonResponse(res, 200, result);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/projects") {
+      jsonResponse(res, 200, { projects: (await getProjects()).map(decorateProject) });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/projects") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      const body = await readJsonBody(req);
+      const now = new Date().toISOString();
+      const project = {
+        id: newProjectId(),
+        title: textOf(body.title || body.prompt).trim().slice(0, 60) || "Untitled",
+        prompt: textOf(body.prompt).trim().slice(0, 2000),
+        created_at: now,
+        updated_at: now,
+        thumbnail: "",
+        elements: [],
+        messages: [],
+      };
+      const projects = await getProjects();
+      projects.unshift(project);
+      await saveProjectsIndex(projects);
+      jsonResponse(res, 200, decorateProject(project));
+      return;
+    }
+
+    const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+    if (projectMatch) {
+      const projectId = decodeURIComponent(projectMatch[1]);
+      if (req.method === "GET") {
+        const project = (await getProjects()).find((item) => item.id === projectId);
+        if (!project) {
+          jsonResponse(res, 404, { error: "未找到该项目" });
+          return;
+        }
+        jsonResponse(res, 200, decorateProject(project));
+        return;
+      }
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      if (req.method === "PATCH") {
+        const body = await readJsonBody(req);
+        const projects = await getProjects();
+        const project = projects.find((item) => item.id === projectId);
+        if (!project) {
+          jsonResponse(res, 404, { error: "未找到该项目" });
+          return;
+        }
+        const title = textOf(body.title).trim().slice(0, 60);
+        if (title) project.title = title;
+        project.updated_at = new Date().toISOString();
+        await saveProjectsIndex(projects);
+        jsonResponse(res, 200, decorateProject(project));
+        return;
+      }
+      if (req.method === "DELETE") {
+        const result = await deleteProjectById(projectId);
+        if (!result) {
+          jsonResponse(res, 404, { error: "未找到该项目" });
+          return;
+        }
+        jsonResponse(res, 200, { ok: true, deleted: projectId, projects: (await getProjects()).map(decorateProject) });
+        return;
+      }
+    }
+
+    const projectMessagesMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/messages$/);
+    if (projectMessagesMatch && req.method === "POST") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      const body = await readJsonBody(req);
+      const message = await appendProjectMessage(decodeURIComponent(projectMessagesMatch[1]), body.role, body.content);
+      if (!message) {
+        jsonResponse(res, 404, { error: "未找到该项目" });
+        return;
+      }
+      jsonResponse(res, 200, { message });
+      return;
+    }
+
+    const projectCanvasMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/canvas$/);
+    if (projectCanvasMatch && req.method === "POST") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      const body = await readJsonBody(req);
+      const project = await saveProjectCanvas(decodeURIComponent(projectCanvasMatch[1]), {
+        title: body.title,
+        elements: body.elements,
+      });
+      if (!project) {
+        jsonResponse(res, 404, { error: "未找到该项目" });
+        return;
+      }
+      jsonResponse(res, 200, decorateProject(project));
+      return;
+    }
+
+    const projectElementMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/elements\/([^/]+)$/);
+    if (projectElementMatch && req.method === "DELETE") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      const removed = await deleteProjectElementById(
+        decodeURIComponent(projectElementMatch[1]),
+        decodeURIComponent(projectElementMatch[2]),
+      );
+      if (!removed) {
+        jsonResponse(res, 404, { error: "未找到该画布元素" });
+        return;
+      }
+      const project = (await getProjects()).find((item) => item.id === projectElementMatch[1]);
+      jsonResponse(res, 200, decorateProject(project || { elements: [] }));
       return;
     }
 

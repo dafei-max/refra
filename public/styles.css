@@ -2255,15 +2255,32 @@ button:disabled {
   font-weight: 500;
   flex-direction: row;
   gap: 8px;
+  opacity: 0.6;
 }
 
-.topbar-nav .rail-item img {
+.topbar-nav .rail-item .rail-icon {
+  position: relative;
   width: 18px;
   height: 18px;
+  display: block;
+}
+
+.topbar-nav .rail-item .rail-icon img {
+  position: absolute;
+  inset: 0;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 .topbar-nav .rail-item.active {
-  background: #161616;
+  background: #ffffff;
+  color: #111111;
+  opacity: 1;
+}
+
+.topbar-nav .rail-item.active .rail-icon img {
+  filter: brightness(0);
 }
 
 .topbar-actions {
@@ -2359,8 +2376,8 @@ button:disabled {
 .title-input:not(:placeholder-shown),
 .subtitle-input:not(:placeholder-shown),
 .time-input:not(:placeholder-shown) {
-  color: #14e1b9;
-  border-color: rgba(20, 225, 185, 0.45);
+  color: #005aff;
+  border-color: rgba(0, 90, 255, 0.45);
 }
 
 .text-wrap textarea {
@@ -2369,9 +2386,9 @@ button:disabled {
 }
 
 .send-button {
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
   background: #e5e5e5;
   opacity: 0.5;
   border-radius: 50%;
@@ -2401,10 +2418,6 @@ button:disabled {
 
 .dock-tools .tool-button:hover {
   background: #2c2c2c;
-}
-
-.dock-tools .tool-button img {
-  filter: invert(1);
 }
 
 .admin-token-input {
@@ -2444,7 +2457,7 @@ button:disabled {
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 24px;
 }
 
@@ -2465,6 +2478,15 @@ button:disabled {
   aspect-ratio: 4 / 3;
   background: #000000;
   overflow: hidden;
+}
+
+.project-card-thumb.placeholder {
+  background: linear-gradient(135deg, #232323, #1a1a1a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555555;
+  font-size: 28px;
 }
 
 .project-card-thumb img {
@@ -2492,6 +2514,15 @@ button:disabled {
   color: #919191;
   font-size: 12px;
   margin: 0;
+}
+
+.project-card-new {
+  border: 1px dashed #3a3a3a;
+  background: #1f1f1f;
+}
+
+.project-card-new:hover {
+  background: #232323;
 }
 
 .inspiration-tile {
@@ -2565,30 +2596,76 @@ button:disabled {
   margin-top: 16px;
 }
 
-.invite-token-box {
-  background: #303030;
-  border-radius: 12px;
-  padding: 14px 16px;
-  color: #ffffff;
-  font-size: 13px;
-  word-break: break-all;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
+.invite-close {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
 }
 
-.invite-copy-btn {
-  margin-top: 12px;
+.invite-close img {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+.invite-field {
+  display: flex;
+  align-items: center;
+  background: #303030;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.invite-token-input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 13px;
+  padding: 13px 14px;
+  outline: none;
+  min-width: 0;
+}
+
+.invite-token-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.invite-eye {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.invite-eye img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.invite-error {
+  color: #ff5a5a;
+  font-size: 12px;
+  margin: 8px 2px 0;
+}
+
+.invite-confirm {
+  margin-top: 16px;
+  width: 100%;
   background: #303030;
   color: #ffffff;
-  border: 1px solid #444444;
+  border: 0;
   border-radius: 12px;
-  padding: 9px 22px;
-  font-size: 13px;
+  padding: 11px 0;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.invite-copy-btn:hover {
+.invite-confirm:hover {
   background: #3a3a3a;
 }
 
@@ -2802,7 +2879,7 @@ button:disabled {
 }
 
 .cf-node.selected {
-  outline: 2px solid #14e1b9;
+  outline: 2px solid #005aff;
 }
 
 .cf-node img {
@@ -2871,4 +2948,129 @@ button:disabled {
 
 .react-flow__attribution {
   display: none;
+}
+
+/* 画布顶部标题 / 空状态 / 小地图 / 对话收缩 */
+.cf-canvas-title {
+  position: absolute;
+  top: 14px;
+  left: 96px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  padding: 5px 14px 5px 8px;
+  color: #ffffff;
+}
+
+.cf-canvas-title-icon {
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.cf-canvas-title-text {
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 13px;
+  cursor: text;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-canvas-title-input {
+  border: 1px solid #005aff;
+  background: #1a1a1a;
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 13px;
+  padding: 3px 8px;
+  outline: none;
+  width: 160px;
+}
+
+.cf-canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555555;
+  font-size: 15px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.cf-extra-controls {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cf-extra-controls button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #3a3a3a;
+  background: #232323;
+  color: #ffffff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.cf-extra-controls button.active {
+  background: #005aff;
+  border-color: #005aff;
+}
+
+.cf-chat-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-chat-collapse {
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.cf-chat-expand {
+  position: fixed;
+  right: 14px;
+  top: 96px;
+  z-index: 60;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #3a3a3a;
+  background: #232323;
+  color: #ffffff;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.cf-composer-send {
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 0 !important;
+  background: #0b8de9 !important;
 }
