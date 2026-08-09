@@ -478,7 +478,18 @@ function CanvasApp() {
           proOptions={{ hideAttribution: true }}
         >
           <Background color="#3a3a3a" gap={24} />
-          {showMini && <MiniMap pannable zoomable style={{ background: "#ffffff" }} />}
+          {showMini && (
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor="#ebebe9"
+              nodeStrokeColor="transparent"
+              nodeBorderRadius={2}
+              maskColor="transparent"
+              maskStrokeColor="transparent"
+              style={{ width: 176, height: 106, background: "#fffffd" }}
+            />
+          )}
           <CanvasControls showMini={showMini} onToggleMini={() => setShowMini((value) => !value)} />
         </ReactFlow>
       </div>

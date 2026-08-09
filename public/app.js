@@ -143,6 +143,7 @@ const LEGACY_MATERIAL_ROLES = {
 };
 
 let allMaterials = [];
+let canvasAppLoadPromise = null;
 let allStylePresets = [];
 let activeIntegratedLayoutTab = "vertical";
 let activeMaterialTab = "全部";
@@ -369,7 +370,7 @@ function renderStylePresetCards() {
             .map((item) => {
               const selected = item.id === current;
               const media = item.thumbnail
-                ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" />`
+                ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" />`
                 : `<span class="empty-preset">无预设</span>`;
               return `
                 <article class="style-modal-card${selected ? " selected" : ""}">
@@ -1216,7 +1217,7 @@ function renderStyleList() {
       .map(
         (item) => `
           <article class="style-manage-card">
-            ${item.thumbnail ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" />` : `<span>${escapeHtml(styleNameShort(item.name))}</span>`}
+            ${item.thumbnail ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" />` : `<span>${escapeHtml(styleNameShort(item.name))}</span>`}
             <strong>${escapeHtml(styleNameShort(item.name))}</strong>
           </article>
         `,
@@ -1611,7 +1612,7 @@ function renderLibrary(items = allMaterials) {
     .map(
       (item) => `
         <button type="button" class="material-thumb" data-material-number="${escapeHtml(item.number)}">
-          <img src="${item.image || ""}" alt="${escapeHtml(item.number)}" />
+          <img src="${item.image || ""}" alt="${escapeHtml(item.number)}" loading="lazy" decoding="async" />
         </button>
       `,
     )
@@ -1677,11 +1678,14 @@ function closeMaterialDetail() {
 async function boot() {
   try {
     renderSizePicker();
-    await loadStyles();
-    await loadLibrary();
-    await loadRecentProjects();
-    await loadHomeInspiration();
     runButton.classList.toggle("active", visualDescriptionInput.value.trim().length > 0);
+    const results = await Promise.allSettled([
+      loadStyles(),
+      loadRecentProjects(),
+      loadHomeInspiration(),
+    ]);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed) throw failed.reason;
   } catch (error) {
     setError(`服务异常：${error.message}`);
   }
@@ -1760,7 +1764,10 @@ function homeMaterialsForTab(materials) {
 }
 
 async function loadHomeInspiration() {
-  const payload = await fetch("/api/materials").then((response) => response.json()).catch(() => ({ materials: [] }));
+  const role = homeMaterialTab === "全部" ? "" : homeMaterialTab;
+  const params = new URLSearchParams({ limit: "10" });
+  if (role) params.set("role", role);
+  const payload = await fetch(`/api/materials?${params}`).then((response) => response.json()).catch(() => ({ materials: [] }));
   const list = homeMaterialsForTab(payload.materials || []).slice(0, 10);
   homeInspiration.classList.remove("empty-state");
   homeInspiration.innerHTML = list.length
@@ -1799,14 +1806,46 @@ async function createProject() {
   await openCanvas(payload.id);
 }
 
+function ensureCanvasApp() {
+  if (typeof window.__startCanvasSession === "function") return Promise.resolve();
+  if (canvasAppLoadPromise) return canvasAppLoadPromise;
+  canvasAppLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/canvas-app.js";
+    script.async = true;
+    script.onload = () => {
+      const startedAt = performance.now();
+      const waitForCanvasSession = () => {
+        if (typeof window.__startCanvasSession === "function") {
+          resolve();
+          return;
+        }
+        if (performance.now() - startedAt > 5000) {
+          reject(new Error("画布模块初始化失败"));
+          return;
+        }
+        window.setTimeout(waitForCanvasSession, 16);
+      };
+      waitForCanvasSession();
+    };
+    script.onerror = () => reject(new Error("画布模块加载失败，请稍后重试"));
+    document.body.appendChild(script);
+  }).catch((error) => {
+    canvasAppLoadPromise = null;
+    throw error;
+  });
+  return canvasAppLoadPromise;
+}
+
 async function openCanvas(projectId, init = null) {
-  const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+  const [response] = await Promise.all([
+    fetch(`/api/projects/${encodeURIComponent(projectId)}`),
+    ensureCanvasApp(),
+  ]);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "读取项目失败");
   showView("canvas");
-  if (window.__startCanvasSession) {
-    window.__startCanvasSession(init ? { ...init, projectId, project: payload } : { projectId, project: payload });
-  }
+  window.__startCanvasSession(init ? { ...init, projectId, project: payload } : { projectId, project: payload });
 }
 
 window.__canvasTool = (action, event) => {

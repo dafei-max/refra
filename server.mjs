@@ -81,6 +81,7 @@ const MAX_JSON_BYTES = Math.max(64 * 1024, Number(process.env.MAX_JSON_BYTES || 
 // Vercel 平台对总请求体有约 850KB 的实测上限，超限直接返回 503（不会进入函数）。
 // 前端已把参考图压缩进该预算，这里做服务端兜底校验。
 const MAX_REFERENCE_UPLOAD_BYTES = 600 * 1024;
+const PUBLIC_STATIC_CACHE_CONTROL = "public, max-age=0, s-maxage=31536000, stale-while-revalidate=60";
 const RATE_LIMIT_RUN_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_RUN_PER_MIN || 3));
 const RATE_LIMIT_EXPAND_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_EXPAND_PER_MIN || 10));
 const RATE_LIMIT_SEARCH_PER_MIN = Math.max(1, Number(process.env.RATE_LIMIT_SEARCH_PER_MIN || 10));
@@ -6651,7 +6652,7 @@ async function readRunRequest(req) {
   });
 }
 
-async function serveStatic(res, filePath, baseDir) {
+async function serveStatic(res, filePath, baseDir, { cacheControl = "" } = {}) {
   const resolved = path.resolve(filePath);
   if (!resolved.startsWith(path.resolve(baseDir))) {
     jsonResponse(res, 403, { error: "Forbidden" });
@@ -6662,8 +6663,15 @@ async function serveStatic(res, filePath, baseDir) {
     return;
   }
   const ext = path.extname(resolved).toLowerCase();
-  res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
-  res.end(await readFile(resolved));
+  const body = await readFile(resolved);
+  const headers = {
+    "Content-Type": MIME[ext] || "application/octet-stream",
+    "Content-Length": body.length,
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (cacheControl) headers["Cache-Control"] = cacheControl;
+  res.writeHead(200, headers);
+  res.end(body);
 }
 
 const server = createServer(async (req, res) => {
@@ -6724,7 +6732,20 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/materials") {
-      jsonResponse(res, 200, { materials: decorateUploadUrls(await loadMaterials()) });
+      let materials = await loadMaterials();
+      const role = textOf(url.searchParams.get("role")).trim();
+      if (role) {
+        materials = materials.filter((item) => (
+          [item.type, ...(item.reference_roles || [])]
+            .map((value) => textOf(value))
+            .some((value) => value.includes(role))
+        ));
+      }
+      const requestedLimit = Number(url.searchParams.get("limit") || 0);
+      if (Number.isFinite(requestedLimit) && requestedLimit > 0) {
+        materials = materials.slice(0, Math.min(100, Math.floor(requestedLimit)));
+      }
+      jsonResponse(res, 200, { materials: decorateUploadUrls(materials) });
       return;
     }
 
@@ -7053,7 +7074,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
-      await serveStatic(res, path.join(ASSET_DIR, decodeURIComponent(url.pathname.replace("/assets/", ""))), ASSET_DIR);
+      await serveStatic(res, path.join(ASSET_DIR, decodeURIComponent(url.pathname.replace("/assets/", ""))), ASSET_DIR, { cacheControl: PUBLIC_STATIC_CACHE_CONTROL });
       return;
     }
 
@@ -7071,22 +7092,22 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/image/")) {
-      await serveStatic(res, path.join(IMAGE_DIR, decodeURIComponent(url.pathname.replace("/image/", ""))), IMAGE_DIR);
+      await serveStatic(res, path.join(IMAGE_DIR, decodeURIComponent(url.pathname.replace("/image/", ""))), IMAGE_DIR, { cacheControl: PUBLIC_STATIC_CACHE_CONTROL });
       return;
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/doudou/")) {
-      await serveStatic(res, path.join(DOUDOU_DIR, decodeURIComponent(url.pathname.replace("/doudou/", ""))), DOUDOU_DIR);
+      await serveStatic(res, path.join(DOUDOU_DIR, decodeURIComponent(url.pathname.replace("/doudou/", ""))), DOUDOU_DIR, { cacheControl: PUBLIC_STATIC_CACHE_CONTROL });
       return;
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/sytle/")) {
-      await serveStatic(res, path.join(STYLE_DIR, decodeURIComponent(url.pathname.replace("/sytle/", ""))), STYLE_DIR);
+      await serveStatic(res, path.join(STYLE_DIR, decodeURIComponent(url.pathname.replace("/sytle/", ""))), STYLE_DIR, { cacheControl: PUBLIC_STATIC_CACHE_CONTROL });
       return;
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/style/")) {
-      await serveStatic(res, path.join(STYLE_DIR, decodeURIComponent(url.pathname.replace("/style/", ""))), STYLE_DIR);
+      await serveStatic(res, path.join(STYLE_DIR, decodeURIComponent(url.pathname.replace("/style/", ""))), STYLE_DIR, { cacheControl: PUBLIC_STATIC_CACHE_CONTROL });
       return;
     }
 
@@ -7102,7 +7123,7 @@ const server = createServer(async (req, res) => {
     }
 
     const publicPath = url.pathname === "/" ? "/index.html" : url.pathname;
-    await serveStatic(res, path.join(PUBLIC_DIR, decodeURIComponent(publicPath)), PUBLIC_DIR);
+    await serveStatic(res, path.join(PUBLIC_DIR, decodeURIComponent(publicPath)), PUBLIC_DIR, { cacheControl: PUBLIC_STATIC_CACHE_CONTROL });
   } catch (error) {
     jsonResponse(res, error.statusCode || 500, { error: error.message || "Server error" });
   }
