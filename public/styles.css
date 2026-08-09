@@ -2867,6 +2867,804 @@ button:disabled {
   background: #0b8de9 !important;
 }
 
+/* Figma 2026-08-09 精确对齐：主页、项目、Invite 与无限画布 */
+:root {
+  --accent: #005aff;
+}
+
+body {
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.14) 1px, transparent 1px) 0 0 / 18px 18px,
+    #0f0f0f;
+}
+
+.neo-topbar {
+  height: 80px;
+  padding: 0 32px;
+  background: rgba(15, 15, 15, 0.9);
+  backdrop-filter: blur(14px);
+}
+
+.neo-topbar .neo-brand img {
+  height: 32px;
+}
+
+.topbar-nav {
+  gap: 18px;
+}
+
+.topbar-nav .rail-item {
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  color: #fff;
+  opacity: 0.6;
+}
+
+.topbar-nav .rail-item.active {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  opacity: 1;
+}
+
+.topbar-nav .rail-item.active .rail-icon img {
+  filter: none;
+}
+
+.invite-btn {
+  min-width: 80px;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.neo-main {
+  padding-top: 80px;
+}
+
+.generate-page {
+  padding: 34px 0 96px;
+}
+
+.home-title {
+  margin: 4px auto 20px;
+}
+
+.prompt-stack {
+  width: min(902px, calc(100vw - 48px));
+  margin: 0 auto;
+}
+
+.prompt-dock {
+  min-height: 194px;
+  gap: 18px;
+  padding: 17px;
+  border: 1px solid rgba(82, 82, 82, 0.7);
+  border-radius: 26px;
+  background: #232323;
+}
+
+.brief-top-row {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.brief-guide {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.title-input,
+.subtitle-input,
+.time-input {
+  width: 128px;
+  height: 28px;
+  flex: 0 1 auto;
+  padding: 0 10px;
+  border: 1px solid rgba(82, 82, 82, 0.7);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.title-input:focus,
+.subtitle-input:focus,
+.time-input:focus,
+.title-input:not(:placeholder-shown),
+.subtitle-input:not(:placeholder-shown),
+.time-input:not(:placeholder-shown) {
+  border-color: rgba(0, 90, 255, 0.7);
+  color: #005aff;
+}
+
+#visualDescriptionInput {
+  min-height: 60px;
+  height: 60px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+#visualDescriptionInput::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.dock-actions {
+  align-items: center;
+}
+
+.dock-tools .tool-button {
+  border-color: #525252;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dock-tools .tool-button.active,
+.dock-tools .tool-button[aria-pressed="true"] {
+  border-color: #005aff;
+  color: #005aff;
+  background: rgba(0, 90, 255, 0.08);
+}
+
+.dock-tools .tool-button img {
+  filter: none !important;
+}
+
+.send-button,
+.send-button.active {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.send-button img {
+  width: 30px;
+  height: 30px;
+  opacity: 0.5;
+}
+
+.send-button.active img {
+  opacity: 1;
+}
+
+.home-module,
+.assets-page .page-content {
+  width: min(1592px, calc(100vw - 64px));
+  max-width: 1592px;
+  padding: 0;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.home-module {
+  margin-top: 30px;
+}
+
+.home-module + .home-module {
+  margin-top: 34px;
+}
+
+.home-module-head {
+  margin-bottom: 10px;
+}
+
+.home-module-head h2 {
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.text-link {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.project-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+}
+
+.project-card {
+  min-width: 0;
+  padding: 6px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.project-card:hover {
+  box-shadow: none;
+}
+
+.project-card-thumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  background: #232323;
+}
+
+.project-card-thumb.placeholder {
+  background: #232323;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 28px;
+}
+
+.project-card-thumb img {
+  border-radius: 12px;
+}
+
+.project-card-body {
+  padding: 9px 4px 0;
+}
+
+.project-card-body h3 {
+  margin: 0 0 3px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+}
+
+.project-card-body p {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.project-card-new {
+  border: 0;
+  background: transparent;
+}
+
+.project-card-new:hover {
+  background: transparent;
+}
+
+.project-card-new .project-card-body h3 {
+  margin-bottom: 17px;
+}
+
+.project-empty-mark {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.home-inspiration-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+
+.home-inspiration-tabs button {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+}
+
+.home-inspiration-tabs button.active {
+  border-color: #525252;
+  background: #161616;
+  color: #fff;
+}
+
+.home-module .material-masonry {
+  column-count: 5;
+  column-gap: 4px;
+  max-height: 420px;
+  overflow: hidden;
+}
+
+.assets-page {
+  padding: 42px 0 80px;
+}
+
+.assets-page .projects-head {
+  display: none;
+}
+
+/* Invite */
+.invite-card {
+  width: 441px;
+  padding: 16px 24px 24px;
+  border-radius: 24px;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+}
+
+.invite-card-head {
+  height: 28px;
+  padding: 5px 0;
+}
+
+.invite-card-head h3 {
+  font-size: 18px;
+  line-height: 28px;
+}
+
+.invite-close img {
+  width: 16px;
+  height: 16px;
+}
+
+.invite-card-body {
+  margin-top: 16px;
+}
+
+.invite-field {
+  position: relative;
+  height: 50px;
+  border: 0.5px solid #525252;
+  border-radius: 12px;
+  background: #303030;
+  backdrop-filter: blur(20px);
+}
+
+.invite-token-input {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  padding: 10px 48px 10px 12px;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: #fff;
+  font-size: 18px;
+  line-height: 28px;
+}
+
+.invite-token-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.35);
+}
+
+.invite-token-display {
+  position: absolute;
+  z-index: 1;
+  left: 12px;
+  right: 48px;
+  top: 50%;
+  overflow: hidden;
+  transform: translateY(-50%);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+  white-space: nowrap;
+  text-overflow: clip;
+  pointer-events: none;
+}
+
+.invite-eye {
+  position: relative;
+  z-index: 3;
+  padding: 0 12px;
+}
+
+.invite-eye img {
+  width: 24px;
+  height: 24px;
+}
+
+.invite-confirm {
+  height: 50px;
+  margin-top: 16px;
+  padding: 0;
+  border-radius: 12px;
+  background: #fff;
+  color: #212121;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.invite-confirm:hover {
+  background: #fff;
+}
+
+.invite-confirm:disabled {
+  background: #303030;
+  color: rgba(255, 255, 255, 0.5);
+  opacity: 1;
+}
+
+.invite-error {
+  margin: 6px 2px -8px;
+}
+
+/* Canvas */
+.canvas-mode .neo-topbar {
+  display: none;
+}
+
+.canvas-mode .neo-main {
+  padding-top: 0;
+}
+
+.canvas-mode {
+  overflow: hidden;
+}
+
+.canvas-page {
+  height: 100vh;
+  min-height: 100vh;
+  background: #1c1c1c;
+}
+
+.canvas-app-main {
+  background: #1c1c1c;
+}
+
+.canvas-app-back {
+  display: none;
+}
+
+.canvas-app-chat {
+  width: 399px;
+  min-width: 280px;
+  background: #2c2c2c;
+  border-left: 0;
+}
+
+.cf-chat-head {
+  min-height: 48px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #444;
+}
+
+.cf-chat-title {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.cf-chat-collapse,
+.cf-chat-expand {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0.5px solid #525252;
+  border-radius: 8px;
+  background: #232323;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+}
+
+.cf-chat-expand {
+  top: 12px;
+  right: 12px;
+  z-index: 60;
+}
+
+.cf-chat-messages {
+  position: relative;
+  padding: 12px;
+  gap: 12px;
+}
+
+.cf-chat-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.36);
+  font-size: 34px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.cf-msg-wrap {
+  max-width: 100%;
+}
+
+.cf-msg-wrap.user .cf-msg {
+  max-width: 92%;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 24px;
+}
+
+.cf-msg-wrap.assistant.status .cf-msg {
+  color: #9b9b9b;
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.cf-chat-composer {
+  min-height: 120px;
+  margin: 0 8px 8px;
+  padding: 9px;
+  border: 1px solid #444;
+  border-radius: 16px;
+  background: #232323;
+}
+
+.cf-composer-input {
+  min-height: 62px;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.cf-composer-tools {
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.cf-composer-tools button {
+  height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #525252;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.cf-composer-tools button > img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.cf-composer-tools .cf-composer-upload {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.cf-composer-send,
+.cf-composer-send:hover {
+  width: 30px !important;
+  min-width: 30px;
+  height: 30px !important;
+  margin-left: auto;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.cf-composer-send img {
+  width: 30px !important;
+  height: 30px !important;
+  opacity: 0.5;
+}
+
+.cf-composer-send.active img {
+  opacity: 1;
+}
+
+.cf-canvas-title {
+  top: 32px;
+  left: 32px;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cf-canvas-title-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.cf-canvas-title-icon img {
+  width: 126px;
+  height: 32px;
+  max-width: none;
+  display: block;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.cf-canvas-title-text {
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #303030;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.cf-canvas-title-input {
+  height: 32px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.cf-canvas-empty {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 34px;
+  font-weight: 600;
+}
+
+.react-flow__controls {
+  display: none;
+}
+
+.cf-extra-controls {
+  left: 40px;
+  bottom: 32px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cf-extra-controls button,
+.cf-extra-controls button.active {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 22px;
+  line-height: 20px;
+}
+
+.cf-control-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.cf-minimap-icon {
+  position: relative;
+  width: 18px;
+  height: 15px;
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+
+.cf-minimap-icon::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: -3px;
+  width: 5px;
+  height: 5px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: #1c1c1c;
+}
+
+.react-flow__minimap {
+  left: 40px !important;
+  right: auto !important;
+  bottom: 64px !important;
+  width: 200px !important;
+  height: 130px !important;
+  border: 12px solid #fff;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px #dedede;
+}
+
+.cf-node.selected {
+  outline: 2px solid #005aff;
+}
+
+.cf-node-toolbar {
+  top: -46px;
+  min-width: 229px;
+  height: 38px;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.cf-node-toolbar button {
+  height: 32px;
+  padding: 0 8px;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cf-node-toolbar button > img {
+  width: 20px;
+  height: 20px;
+}
+
+.cf-node-toolbar .cf-toolbar-icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.cf-tb-divider {
+  align-self: stretch;
+  height: auto;
+  margin: 0 2px;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.hd-badge {
+  width: 20px;
+  height: 14px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.9);
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 12px;
+}
+
+@media (max-width: 1200px) {
+  .home-module,
+  .assets-page .page-content {
+    width: calc(100vw - 48px);
+  }
+
+  .project-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .home-module .material-masonry {
+    column-count: 4;
+  }
+}
+
+@media (max-width: 760px) {
+  .neo-topbar {
+    padding: 0 16px;
+  }
+
+  .neo-topbar .neo-brand {
+    display: none;
+  }
+
+  .topbar-nav {
+    gap: 2px;
+  }
+
+  .topbar-nav .rail-item {
+    padding: 8px 10px;
+  }
+
+  .invite-btn {
+    min-width: 64px;
+    padding: 0 12px;
+  }
+
+  .brief-top-row {
+    flex-wrap: wrap;
+  }
+
+  .home-module {
+    width: calc(100vw - 24px);
+  }
+
+  .project-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .home-module .material-masonry {
+    column-count: 2;
+  }
+}
+
 /* React Flow 节点 */
 .cf-node {
   position: relative;
@@ -3073,4 +3871,173 @@ button:disabled {
   border-radius: 50% !important;
   border: 0 !important;
   background: #0b8de9 !important;
+}
+
+/* Keep the canvas-specific Figma overrides last: legacy canvas rules above are intentionally retained for rollback. */
+.canvas-page .cf-canvas-title {
+  top: 32px;
+  left: 32px;
+  gap: 8px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.canvas-page .cf-canvas-title-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.canvas-page .cf-canvas-title-icon img {
+  width: 126px;
+  height: 32px;
+  max-width: none;
+  display: block;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.canvas-page .cf-canvas-title-text {
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #303030;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.canvas-page .cf-canvas-empty {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 34px;
+  font-weight: 600;
+}
+
+.canvas-page .cf-extra-controls {
+  left: 40px;
+  bottom: 32px;
+  height: 20px;
+  width: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.canvas-page .cf-extra-controls button,
+.canvas-page .cf-extra-controls button.active {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 22px;
+  line-height: 20px;
+}
+
+.canvas-page .cf-chat-collapse,
+.canvas-page .cf-chat-expand {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0.5px solid #525252;
+  border-radius: 8px;
+  background: #232323;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+}
+
+.canvas-page .cf-chat-expand {
+  top: 12px;
+  right: 12px;
+}
+
+.canvas-page .cf-composer-send,
+.canvas-page .cf-composer-send:hover {
+  width: 30px !important;
+  min-width: 30px;
+  height: 30px !important;
+  margin-left: auto;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.generate-page .dock-tools .doudou-toggle,
+.generate-page .dock-tools .overlay-toggle {
+  display: none;
+}
+
+.canvas-page .cf-extra-controls {
+  bottom: 23px;
+}
+
+.topbar-nav .rail-item:focus,
+.topbar-nav .rail-item:focus-visible {
+  outline: none;
+}
+
+.invite-field.has-value .invite-token-input::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.canvas-page .cf-node-toolbar {
+  top: -46px;
+  min-width: 229px;
+  height: 38px;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.canvas-page .cf-node-toolbar button {
+  height: 32px;
+  padding: 0 8px;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.canvas-page .cf-node-toolbar button > img {
+  width: 20px;
+  height: 20px;
+  border-radius: 0;
+}
+
+.canvas-page .cf-node-toolbar .cf-toolbar-icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.canvas-page .cf-tb-divider {
+  align-self: stretch;
+  height: auto;
+  margin: 0 2px;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.canvas-page .hd-badge {
+  width: 20px;
+  height: 14px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.9);
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 12px;
 }

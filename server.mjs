@@ -2282,19 +2282,14 @@ async function getProjects() {
   const assets = await loadAssetsIndex();
   const seeded = assets.map((asset) => ({
     id: `p_legacy_${String(asset.name || "asset").replace(/\.[^.]+$/, "").replace(/[^\w-]/g, "_")}`,
-    title: textOf(asset.title || asset.name).trim() || "历史项目",
+    title: "Untitled",
     prompt: textOf(asset.description).trim(),
     created_at: asset.created_at || new Date().toISOString(),
     updated_at: asset.modified_at || asset.created_at || new Date().toISOString(),
     thumbnail: asset.object_key || "",
-    elements: [
-      ...(asset.layers?.typography?.object_key
-        ? [{ id: newProjectElementId(), kind: "typography", name: asset.layers.typography.object_key.split("/").pop(), object_key: asset.layers.typography.object_key, created_at: asset.created_at }]
-        : []),
-      ...(asset.object_key
-        ? [{ id: newProjectElementId(), kind: "kv", name: String(asset.name || ""), object_key: asset.object_key, created_at: asset.created_at }]
-        : []),
-    ],
+    elements: asset.object_key
+      ? [{ id: newProjectElementId(), kind: "kv", name: String(asset.name || ""), object_key: asset.object_key, x: 80, y: 110, created_at: asset.created_at }]
+      : [],
     messages: [],
   }));
   await saveProjectsIndex(seeded);
@@ -2308,6 +2303,10 @@ function decorateProject(project = {}) {
     elements: (project.elements || []).map((element) => ({
       ...element,
       url: element.object_key ? storageSignUrl(element.object_key) : "",
+    })),
+    messages: (project.messages || []).map((message) => ({
+      ...message,
+      image_url: message.image_object_key ? storageSignUrl(message.image_object_key) : "",
     })),
   };
 }
@@ -2364,7 +2363,7 @@ async function appendProjectMessage(projectId, role, content) {
   return message;
 }
 
-async function saveProjectCanvas(projectId, { title, elements }) {
+async function saveProjectCanvas(projectId, { title, elements, edges, viewport, settings, messages }) {
   const projects = await getProjects();
   const project = projects.find((item) => item.id === projectId);
   if (!project) return null;
@@ -2377,6 +2376,8 @@ async function saveProjectCanvas(projectId, { title, elements }) {
       if (!key) continue;
       const existing = byKey.get(key);
       if (existing) {
+        if (textOf(element.id)) existing.id = textOf(element.id).slice(0, 160);
+        if (["typography", "kv", "title", "background", "package"].includes(element.kind)) existing.kind = element.kind;
         if (Number.isFinite(Number(element.x))) existing.x = Number(element.x);
         if (Number.isFinite(Number(element.y))) existing.y = Number(element.y);
         if (textOf(element.name)) existing.name = textOf(element.name);
@@ -2395,6 +2396,42 @@ async function saveProjectCanvas(projectId, { title, elements }) {
     project.elements = [...byKey.values()];
     const lastKv = [...project.elements].reverse().find((element) => element.kind === "kv");
     if (lastKv) project.thumbnail = lastKv.object_key;
+  }
+  if (Array.isArray(edges)) {
+    project.edges = edges.slice(0, 500).map((edge) => ({
+      id: textOf(edge.id).slice(0, 160),
+      source: textOf(edge.source).slice(0, 160),
+      target: textOf(edge.target).slice(0, 160),
+    })).filter((edge) => edge.id && edge.source && edge.target);
+  }
+  if (viewport && typeof viewport === "object") {
+    project.viewport = {
+      x: Number.isFinite(Number(viewport.x)) ? Number(viewport.x) : 0,
+      y: Number.isFinite(Number(viewport.y)) ? Number(viewport.y) : 0,
+      zoom: Number.isFinite(Number(viewport.zoom)) ? Math.min(3, Math.max(0.1, Number(viewport.zoom))) : 1,
+    };
+  }
+  if (settings && typeof settings === "object") {
+    project.settings = {
+      image_size: textOf(settings.image_size).slice(0, 16),
+      style_preset: textOf(settings.style_preset).slice(0, 120),
+      style_name: textOf(settings.style_name).slice(0, 120),
+      integrated_layout_variant: textOf(settings.integrated_layout_variant).slice(0, 160),
+      doudou_ip: Boolean(settings.doudou_ip),
+      include_logo: Boolean(settings.include_logo),
+      include_search_overlay: Boolean(settings.include_search_overlay),
+    };
+  }
+  if (Array.isArray(messages)) {
+    project.messages = messages.slice(-100).map((message) => ({
+      id: textOf(message.id).slice(0, 160) || newProjectMessageId(),
+      role: message.role === "user" ? "user" : "assistant",
+      kind: message.kind === "status" ? "status" : "message",
+      content: textOf(message.content).slice(0, 4000),
+      image_object_key: textOf(message.image_object_key).slice(0, 1000),
+      imageName: textOf(message.imageName).slice(0, 240),
+      created_at: message.created_at || new Date().toISOString(),
+    })).filter((message) => message.content || message.image_object_key);
   }
   project.updated_at = new Date().toISOString();
   await saveProjectsIndex(projects);
@@ -6169,6 +6206,35 @@ async function writeSplitPackage({ source, title, subtitle, time, titleLayer, ba
 async function splitAssetLayers({ name, title, subtitle, time }) {
   const source = await outputAssetPathByName(name);
   if (!source) throw new Error("未找到该生成资产");
+  const indexedAsset = (await loadAssetsIndex()).find((asset) => asset.name === name);
+  const savedSplit = indexedAsset?.split;
+  if (savedSplit?.title_layer?.object_key && savedSplit?.background_layer?.object_key) {
+    return {
+      ok: true,
+      reused: true,
+      source,
+      title_layer: {
+        ...savedSplit.title_layer,
+        name: savedSplit.title_layer.object_key.split("/").pop(),
+        url: storageSignUrl(savedSplit.title_layer.object_key),
+        transparent_url: savedSplit.title_layer.transparent_object_key
+          ? storageSignUrl(savedSplit.title_layer.transparent_object_key)
+          : "",
+      },
+      background_layer: {
+        ...savedSplit.background_layer,
+        name: savedSplit.background_layer.object_key.split("/").pop(),
+        url: storageSignUrl(savedSplit.background_layer.object_key),
+      },
+      split_package: savedSplit.split_package?.object_key
+        ? {
+            ...savedSplit.split_package,
+            name: savedSplit.split_package.object_key.split("/").pop(),
+            url: storageSignUrl(savedSplit.split_package.object_key),
+          }
+        : null,
+    };
+  }
   if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
 
   let sourcePath = source.filePath || "";
@@ -6758,7 +6824,21 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/projects") {
-      jsonResponse(res, 200, { projects: (await getProjects()).map(decorateProject) });
+      const projects = [...(await getProjects())].sort((left, right) => (
+        new Date(right.updated_at || right.created_at || 0).getTime()
+        - new Date(left.updated_at || left.created_at || 0).getTime()
+      ));
+      jsonResponse(res, 200, { projects: projects.map(decorateProject) });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/auth/verify") {
+      const header = textOf(req.headers.authorization).trim();
+      if (!header.startsWith("Bearer ") || !isAuthorized(req)) {
+        jsonResponse(res, 401, { ok: false });
+        return;
+      }
+      jsonResponse(res, 200, { ok: true });
       return;
     }
 
@@ -6846,6 +6926,10 @@ const server = createServer(async (req, res) => {
       const project = await saveProjectCanvas(decodeURIComponent(projectCanvasMatch[1]), {
         title: body.title,
         elements: body.elements,
+        edges: body.edges,
+        viewport: body.viewport,
+        settings: body.settings,
+        messages: body.messages,
       });
       if (!project) {
         jsonResponse(res, 404, { error: "未找到该项目" });

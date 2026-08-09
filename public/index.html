@@ -131,9 +131,7 @@
                   </button>
                 </div>
                 <button type="submit" id="runButton" class="send-button" title="运行链路">
-                  <svg class="sparkle-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                    <path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" />
-                  </svg>
+                  <img src="/ui-assets/runButton.png" alt="" aria-hidden="true" />
                 </button>
               </div>
             </form>
@@ -151,6 +149,11 @@
             <div class="home-module-head">
               <h2>灵感发现</h2>
               <button id="homeInspirationMore" type="button" class="text-link">查看全部 →</button>
+            </div>
+            <div id="homeInspirationTabs" class="home-inspiration-tabs" role="tablist" aria-label="灵感分类">
+              <button type="button" class="active" data-home-material-tab="全部">全部</button>
+              <button type="button" data-home-material-tab="字体标题">字体</button>
+              <button type="button" data-home-material-tab="构图版式">构图</button>
             </div>
             <div id="homeInspiration" class="material-masonry empty-state">加载中...</div>
           </div>
@@ -255,7 +258,8 @@
         </div>
         <div class="invite-card-body">
           <div class="invite-field">
-            <input id="inviteTokenInput" type="password" class="invite-token-input" placeholder="请输入 ADMIN_TOKEN" autocomplete="off" />
+            <input id="inviteTokenInput" type="password" class="invite-token-input" aria-label="ADMIN_TOKEN" placeholder="请输入 ADMIN_TOKEN" autocomplete="new-password" spellcheck="false" />
+            <span id="inviteTokenDisplay" class="invite-token-display" aria-hidden="true"></span>
             <button id="inviteEyeButton" type="button" class="invite-eye" title="显示/隐藏">
               <img id="inviteEyeIcon" src="/ui-assets/icon/show.png" alt="" />
             </button>

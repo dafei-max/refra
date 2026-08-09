@@ -2,7 +2,6 @@ const form = document.querySelector("#briefForm");
 const runButton = document.querySelector("#runButton");
 const errorBox = document.querySelector("#errorBox");
 const resultView = document.querySelector("#resultView");
-const adminTokenInput = document.querySelector("#adminTokenInput");
 const ADMIN_TOKEN_KEY = "refra_admin_token";
 const recentProjects = document.querySelector("#recentProjects");
 const homeInspiration = document.querySelector("#homeInspiration");
@@ -11,14 +10,19 @@ const homeInspirationMore = document.querySelector("#homeInspirationMore");
 const inviteButton = document.querySelector("#inviteButton");
 const inviteModal = document.querySelector("#inviteModal");
 const inviteTokenInput = document.querySelector("#inviteTokenInput");
+const inviteTokenDisplay = document.querySelector("#inviteTokenDisplay");
 const inviteEyeButton = document.querySelector("#inviteEyeButton");
 const inviteEyeIcon = document.querySelector("#inviteEyeIcon");
 const inviteError = document.querySelector("#inviteError");
 const inviteConfirmButton = document.querySelector("#inviteConfirmButton");
 const projectsGrid = document.querySelector("#projectsGrid");
+const homeInspirationTabs = document.querySelector("#homeInspirationTabs");
+
+// Scrub tokens left by builds that used persistent storage. Current credentials are tab-scoped only.
+try { localStorage.removeItem(ADMIN_TOKEN_KEY); } catch {}
 
 function adminToken() {
-  return (localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim();
+  return (sessionStorage.getItem(ADMIN_TOKEN_KEY) || "").trim();
 }
 
 function authHeaders(extra = {}) {
@@ -30,22 +34,11 @@ function authHeaders(extra = {}) {
 
 async function apiFetch(url, options = {}) {
   const response = await fetch(url, { ...options, headers: authHeaders(options.headers) });
-  if (response.status === 401 && !options.__authRetried) {
-    const token = window.prompt("此操作需要管理令牌（ADMIN_TOKEN），请输入：");
-    if (token && token.trim()) {
-      localStorage.setItem(ADMIN_TOKEN_KEY, token.trim());
-      if (adminTokenInput) adminTokenInput.value = token.trim();
-      return apiFetch(url, { ...options, __authRetried: true });
-    }
+  if (response.status === 401) {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    window.__openInviteModal?.();
   }
   return response;
-}
-
-if (adminTokenInput) {
-  adminTokenInput.value = adminToken();
-  adminTokenInput.addEventListener("input", () => {
-    localStorage.setItem(ADMIN_TOKEN_KEY, adminTokenInput.value.trim());
-  });
 }
 const assetsButton = document.querySelector("#assetsButton");
 const styleButton = document.querySelector("#styleButton");
@@ -285,6 +278,7 @@ function showView(view) {
   document.querySelectorAll(".rail-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.viewTarget === view);
   });
+  document.body.classList.toggle("canvas-mode", view === "canvas");
 }
 
 function styleNameShort(name) {
@@ -323,6 +317,7 @@ function syncStylePickerButton() {
   stylePickerIcon.alt = isPreset ? preset.name : "";
   stylePickerIcon.classList.toggle("preset-thumb", Boolean(isPreset && preset.thumbnail));
   stylePickerLabel.textContent = isPreset ? styleNameShort(preset.name) : "风格预设";
+  window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
 }
 
 function setSelectedStyle(id) {
@@ -468,6 +463,7 @@ function setImageSize(value) {
   renderSizePicker();
   if (!integratedLayoutInput.value) activeIntegratedLayoutTab = preferredLayoutTabForSize(value);
   if (!stylePresetSection.classList.contains("hidden")) renderStylePresetCards();
+  window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
 }
 
 function referenceLabel(index) {
@@ -956,6 +952,7 @@ async function expandDescription() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "扩写失败");
     visualDescriptionInput.value = result.expanded_description || source;
+    window.dispatchEvent(new CustomEvent("refra:canvas-prompt", { detail: { value: visualDescriptionInput.value } }));
     autoResizeDescription();
     visualDescriptionInput.focus();
     visualDescriptionInput.setSelectionRange(visualDescriptionInput.value.length, visualDescriptionInput.value.length);
@@ -1690,17 +1687,11 @@ async function boot() {
   }
 }
 
-function projectRelativeTime(iso) {
+function projectUpdatedLabel(iso) {
   if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "刚刚";
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
-  return new Date(iso).toLocaleDateString("zh-CN");
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `更新于 ${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 }
 
 async function fetchProjects() {
@@ -1711,11 +1702,14 @@ async function fetchProjects() {
 }
 
 function projectCardHtml(project) {
+  const cover = project.thumbnail_url
+    ? `<img src="${escapeHtml(project.thumbnail_url)}" alt="${escapeHtml(project.title || "Untitled")}" loading="lazy" />`
+    : "";
   return `<article class="project-card" data-project-id="${escapeHtml(project.id)}">
-    <div class="project-card-thumb placeholder"><span>▧</span></div>
+    <div class="project-card-thumb${project.thumbnail_url ? "" : " placeholder"}">${cover}</div>
     <div class="project-card-body">
       <h3>${escapeHtml(project.title || "Untitled")}</h3>
-      <p>${projectRelativeTime(project.updated_at || project.created_at)}</p>
+      <p>${projectUpdatedLabel(project.updated_at || project.created_at)}</p>
     </div>
   </article>`;
 }
@@ -1723,7 +1717,7 @@ function projectCardHtml(project) {
 function newProjectCardHtml() {
   return `<div class="project-card project-card-new" data-new-project>
     <div class="project-card-thumb placeholder"><span>＋</span></div>
-    <div class="project-card-body"><h3>新建项目</h3><p>创建新的无限画布</p></div>
+    <div class="project-card-body"><h3>新建项目</h3></div>
   </div>`;
 }
 
@@ -1755,9 +1749,19 @@ async function loadRecentProjects() {
   renderProjectsInto(recentProjects, projects, { withNewCard: true, limit: 4 });
 }
 
+let homeMaterialTab = "全部";
+
+function homeMaterialsForTab(materials) {
+  if (homeMaterialTab === "全部") return materials;
+  return materials.filter((material) => {
+    const roles = [material.type, material.reference_type, ...(material.reference_roles || [])].map(String);
+    return roles.some((role) => role.includes(homeMaterialTab.slice(0, 2)));
+  });
+}
+
 async function loadHomeInspiration() {
   const payload = await fetch("/api/materials").then((response) => response.json()).catch(() => ({ materials: [] }));
-  const list = (payload.materials || []).slice(0, 8);
+  const list = homeMaterialsForTab(payload.materials || []).slice(0, 10);
   homeInspiration.classList.remove("empty-state");
   homeInspiration.innerHTML = list.length
     ? list.map((material) => `
@@ -1775,6 +1779,14 @@ async function loadHomeInspiration() {
     });
   });
 }
+
+homeInspirationTabs?.querySelectorAll("[data-home-material-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    homeMaterialTab = button.dataset.homeMaterialTab || "全部";
+    homeInspirationTabs.querySelectorAll("[data-home-material-tab]").forEach((node) => node.classList.toggle("active", node === button));
+    loadHomeInspiration().catch(() => {});
+  });
+});
 
 async function createProject() {
   const response = await apiFetch("/api/projects", {
@@ -1827,9 +1839,31 @@ window.__getCanvasSettings = () => ({
   doudou_ip: doudouIpInput.value === "true",
   include_logo: isToolToggleEnabled(includeLogoButton),
   include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
+  style_name: stylePickerLabel.textContent || "风格预设",
 });
 
+window.__applyCanvasSettings = (settings = {}) => {
+  if (settings.image_size) setImageSize(settings.image_size);
+  if (settings.style_preset) {
+    stylePresetInput.value = settings.style_preset;
+    integratedLayoutInput.value = settings.integrated_layout_variant || "";
+    syncStylePickerButton();
+  }
+  if (typeof settings.doudou_ip === "boolean") {
+    doudouIpInput.value = settings.doudou_ip ? "true" : "false";
+    setToolToggleEnabled(doudouIpButton, settings.doudou_ip);
+  }
+  if (typeof settings.include_logo === "boolean") setToolToggleEnabled(includeLogoButton, settings.include_logo);
+  if (typeof settings.include_search_overlay === "boolean") setToolToggleEnabled(includeSearchOverlayButton, settings.include_search_overlay);
+};
+
 window.__getReferenceFiles = () => referenceFiles.map((item) => item.file);
+
+window.__canvasReturnedHome = () => {
+  showView("generate");
+  loadRecentProjects().catch(() => {});
+  loadHomeInspiration().catch(() => {});
+};
 
 window.__saveCanvasRequested = null;
 window.__requestCanvasSave = () => {
@@ -1962,19 +1996,38 @@ let inviteTokenVisible = false;
 
 function maskAdminToken(value) {
   const text = String(value || "");
-  if (text.length <= 11) return text;
-  return `${text.slice(0, 7)}****${text.slice(-4)}`;
+  if (!text) return "";
+  if (text.length <= 4) return "*".repeat(text.length);
+  if (text.length < 12) return `${text.slice(0, 2)}${"*".repeat(Math.max(4, text.length - 4))}${text.slice(-2)}`;
+  return `${text.slice(0, 8)}${"*".repeat(Math.max(4, text.length - 12))}${text.slice(-4)}`;
 }
 
-inviteButton.addEventListener("click", () => {
+function renderInviteToken() {
+  inviteTokenDisplay.textContent = inviteTokenValue
+    ? (inviteTokenVisible ? maskAdminToken(inviteTokenValue) : "•".repeat(Math.min(16, Math.max(8, inviteTokenValue.length))))
+    : "";
+  inviteFieldHasValue();
+}
+
+function inviteFieldHasValue() {
+  const hasValue = Boolean(inviteTokenValue.trim());
+  inviteTokenInput.closest(".invite-field")?.classList.toggle("has-value", hasValue);
+  inviteConfirmButton.disabled = !hasValue;
+}
+
+function openInviteModal() {
   inviteTokenValue = adminToken();
   inviteTokenVisible = false;
-  inviteTokenInput.type = "password";
-  inviteTokenInput.value = inviteTokenValue;
+  inviteTokenInput.value = "";
   inviteEyeIcon.src = "/ui-assets/icon/show.png";
   inviteError.classList.add("hidden");
+  renderInviteToken();
   inviteModal.classList.remove("hidden");
-});
+  requestAnimationFrame(() => inviteTokenInput.focus());
+}
+
+window.__openInviteModal = openInviteModal;
+inviteButton.addEventListener("click", openInviteModal);
 
 document.querySelectorAll("[data-close-invite]").forEach((el) => {
   el.addEventListener("click", () => inviteModal.classList.add("hidden"));
@@ -1982,31 +2035,24 @@ document.querySelectorAll("[data-close-invite]").forEach((el) => {
 
 inviteEyeButton.addEventListener("click", () => {
   inviteTokenVisible = !inviteTokenVisible;
-  if (inviteTokenVisible) {
-    inviteTokenInput.type = "text";
-    inviteTokenInput.value = maskAdminToken(inviteTokenValue);
-    inviteEyeIcon.src = "/ui-assets/icon/hide.png";
-  } else {
-    inviteTokenInput.type = "password";
-    inviteTokenInput.value = inviteTokenValue;
-    inviteEyeIcon.src = "/ui-assets/icon/show.png";
-  }
+  inviteEyeIcon.src = inviteTokenVisible ? "/ui-assets/icon/hide.png" : "/ui-assets/icon/show.png";
+  renderInviteToken();
   inviteTokenInput.focus();
 });
 
 inviteTokenInput.addEventListener("input", () => {
   inviteTokenValue = inviteTokenInput.value;
+  renderInviteToken();
   inviteError.classList.add("hidden");
 });
 
 async function validateAdminToken(token) {
   try {
-    const response = await fetch("/api/expand-description", {
+    const response = await fetch("/api/auth/verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({}),
+      headers: { Authorization: `Bearer ${token}` },
     });
-    return response.status !== 401;
+    return response.ok;
   } catch {
     return false;
   }
@@ -2027,9 +2073,12 @@ inviteConfirmButton.addEventListener("click", async () => {
     inviteError.classList.remove("hidden");
     return;
   }
-  localStorage.setItem(ADMIN_TOKEN_KEY, token);
-  if (adminTokenInput) adminTokenInput.value = token;
+  sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
   inviteModal.classList.add("hidden");
+});
+
+inviteTokenInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !inviteConfirmButton.disabled) inviteConfirmButton.click();
 });
 
 libraryTabs.querySelectorAll("[data-material-tab]").forEach((button) => {
