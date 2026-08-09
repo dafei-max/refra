@@ -243,6 +243,7 @@ function setLoading(isLoading) {
 function setExpandLoading(isLoading) {
   expandDescriptionButton.disabled = isLoading;
   expandDescriptionButton.querySelector("span:last-child").textContent = isLoading ? "扩写中" : "扩写";
+  window.dispatchEvent(new CustomEvent("refra:canvas-expand", { detail: { loading: isLoading } }));
 }
 
 function setDoudouIpEnabled(enabled) {
@@ -559,16 +560,35 @@ function renderReferenceStrip() {
 
   referenceStrip.querySelectorAll("[data-remove-reference]").forEach((button) => {
     button.addEventListener("click", () => {
-      const index = Number(button.dataset.removeReference);
-      const [removed] = referenceFiles.splice(index, 1);
-      if (removed?.url?.startsWith("blob:")) URL.revokeObjectURL(removed.url);
-      renderReferenceStrip();
-      renderMentionMenu();
+      removeReferenceFile(Number(button.dataset.removeReference));
     });
   });
+
+  window.dispatchEvent(new CustomEvent("refra:canvas-references", {
+    detail: { loading: false, references: canvasReferencePreviews() },
+  }));
+}
+
+function canvasReferencePreviews() {
+  return referenceFiles.map((item, index) => ({
+    index,
+    name: item.file?.name || referenceLabel(index),
+    url: item.url || item.dataUrl || "",
+  }));
+}
+
+function removeReferenceFile(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= referenceFiles.length) return;
+  const [removed] = referenceFiles.splice(index, 1);
+  if (removed?.url?.startsWith("blob:")) URL.revokeObjectURL(removed.url);
+  renderReferenceStrip();
+  renderMentionMenu();
 }
 
 async function addReferenceFiles(files) {
+  window.dispatchEvent(new CustomEvent("refra:canvas-references", {
+    detail: { loading: true, references: canvasReferencePreviews() },
+  }));
   for (const file of files) {
     if (!file.type.startsWith("image/")) continue;
     try {
@@ -941,7 +961,7 @@ async function expandDescription() {
       image_size: imageSizeInput.value,
       style_preset: stylePresetInput.value,
       reference_labels: referenceFiles.map((_, index) => referenceLabel(index)),
-      doudou_ip: doudouIpInput.value === "true",
+      doudou_ip: /兜兜/.test(source),
       include_logo: isToolToggleEnabled(includeLogoButton),
       include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
     };
@@ -1865,7 +1885,14 @@ window.__canvasTool = (action, event) => {
       visualDescriptionInput.value = window.__canvasPromptValue.trim();
     }
     expandDescriptionButton.click();
+  } else if (action === "logo" || action === "search") {
+    const button = action === "logo" ? includeLogoButton : includeSearchOverlayButton;
+    const enabled = !isToolToggleEnabled(button);
+    setToolToggleEnabled(button, enabled);
+    window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
+    return enabled;
   }
+  return undefined;
 };
 
 window.__getCanvasSettings = () => ({
@@ -1875,7 +1902,7 @@ window.__getCanvasSettings = () => ({
   image_size: imageSizeInput.value,
   style_preset: stylePresetInput.value,
   integrated_layout_variant: integratedLayoutInput.value,
-  doudou_ip: doudouIpInput.value === "true",
+  doudou_ip: /兜兜/.test(String(window.__canvasPromptValue || visualDescriptionInput.value)),
   include_logo: isToolToggleEnabled(includeLogoButton),
   include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
   style_name: stylePickerLabel.textContent || "风格预设",
@@ -1897,6 +1924,9 @@ window.__applyCanvasSettings = (settings = {}) => {
 };
 
 window.__getReferenceFiles = () => referenceFiles.map((item) => item.file);
+window.__getReferencePreviews = canvasReferencePreviews;
+window.__removeReferenceFile = removeReferenceFile;
+window.__setCanvasImageSize = setImageSize;
 
 window.__canvasReturnedHome = () => {
   showView("generate");
@@ -1926,7 +1956,7 @@ form.addEventListener("submit", async (event) => {
     image_size: imageSizeInput.value,
     style_preset: stylePresetInput.value,
     integrated_layout_variant: integratedLayoutInput.value,
-    doudou_ip: doudouIpInput.value === "true",
+    doudou_ip: /兜兜/.test(prompt),
     include_logo: isToolToggleEnabled(includeLogoButton),
     include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
     files: referenceFiles.map((item) => item.file),
@@ -2043,8 +2073,9 @@ function maskAdminToken(value) {
 
 function renderInviteToken() {
   inviteTokenDisplay.textContent = inviteTokenValue
-    ? (inviteTokenVisible ? maskAdminToken(inviteTokenValue) : "•".repeat(Math.min(16, Math.max(8, inviteTokenValue.length))))
+    ? (inviteTokenVisible ? maskAdminToken(inviteTokenValue) : "•".repeat(32))
     : "";
+  inviteTokenDisplay.classList.toggle("fully-masked", Boolean(inviteTokenValue && !inviteTokenVisible));
   inviteFieldHasValue();
 }
 
@@ -2113,6 +2144,8 @@ inviteConfirmButton.addEventListener("click", async () => {
     return;
   }
   sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+  inviteTokenInput.value = "";
+  inviteTokenValue = "";
   inviteModal.classList.add("hidden");
 });
 

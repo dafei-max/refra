@@ -1829,7 +1829,7 @@ function threeDPersonPerspectiveBlock(decision = threeDPersonPerspectiveDecision
 }
 
 function isDoudouEnabled(request = {}) {
-  return request.doudou_ip === true || request.doudou_ip === "true" || request.doudou_ip === "on" || request.doudou_ip === "1";
+  return /兜兜/.test(textOf(request.visual_description));
 }
 
 function booleanPreference(value, fallback = true) {
@@ -1912,7 +1912,7 @@ function buildDoudouReference(relativePath, role, reason, kind = "动作姿态")
     role: kind,
     number: `DOUDOU_${filename}`,
     label: `兜兜-${filename}`,
-    Reference: `${doudouRolePrompt({ doudou_ip: true, visual_description: role === "主体角色" ? "兜兜是主体" : "存在其他主体" })} 参考该图中兜兜的角色造型、比例、颜色、表情气质、动作姿态和IP识别特征；兜兜是袋形IP角色，没有人类手、手掌、手臂、胳膊或嘴巴，只能通过袋身、眼睛、腿脚、提手、身体倾斜和道具关系表现动作与情绪；只复制兜兜IP本身的造型与姿态参考，不复制无关背景、水印或其他文字。`,
+    Reference: `${doudouRolePrompt({ visual_description: role === "主体角色" ? "兜兜是主体" : "兜兜是辅助角色，存在其他主体" })} 参考该图中兜兜的角色造型、比例、颜色、表情气质、动作姿态和IP识别特征；兜兜是袋形IP角色，没有人类手、手掌、手臂、胳膊或嘴巴，只能通过袋身、眼睛、腿脚、提手、身体倾斜和道具关系表现动作与情绪；只复制兜兜IP本身的造型与姿态参考，不复制无关背景、水印或其他文字。`,
     reason,
     image: url,
     local_image: url,
@@ -4516,8 +4516,8 @@ function validateExpandRequest(body) {
     integrated_layout_variant: textOf(body.integrated_layout_variant).trim(),
     reference_labels: Array.isArray(body.reference_labels) ? body.reference_labels : [],
     doudou_ip: isDoudouEnabled(body),
-    include_logo: booleanPreference(body.include_logo, true),
-    include_search_overlay: booleanPreference(body.include_search_overlay, true),
+    include_logo: booleanPreference(body.include_logo, false),
+    include_search_overlay: booleanPreference(body.include_search_overlay, false),
   };
 }
 
@@ -6610,8 +6610,8 @@ function validateRequest(body) {
     reference_labels: Array.isArray(body.reference_labels) ? body.reference_labels : [],
     user_reference_usage: textOf(body.user_reference_usage).trim(),
     doudou_ip: isDoudouEnabled(body),
-    include_logo: booleanPreference(body.include_logo, true),
-    include_search_overlay: booleanPreference(body.include_search_overlay, true),
+    include_logo: booleanPreference(body.include_logo, false),
+    include_search_overlay: booleanPreference(body.include_search_overlay, false),
   };
 }
 

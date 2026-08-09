@@ -30,6 +30,8 @@ function requireInvite(response) {
 
 function ImageNode({ data, selected }) {
   const [splitting, setSplitting] = useState(false);
+  const logoEnabled = Boolean(data.includeLogo);
+  const searchEnabled = Boolean(data.includeSearch);
   const download = () => {
     const link = document.createElement("a");
     link.href = data.url;
@@ -41,10 +43,6 @@ function ImageNode({ data, selected }) {
     <div className={`cf-node${selected ? " selected" : ""}`}>
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <img src={data.url} alt={data.name || ""} />
-      <div className="cf-node-label">
-        <span>{data.label}</span>
-        <span>{data.name || ""}</span>
-      </div>
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
       {selected && (
         <div className="cf-node-toolbar">
@@ -67,6 +65,29 @@ function ImageNode({ data, selected }) {
           <button type="button" className="cf-toolbar-icon" onClick={(event) => { event.stopPropagation(); download(); }} title="下载">
             <img src="/ui-assets/icon/canvas-download.svg" alt="" />
           </button>
+          <span className="cf-tb-divider" />
+          <button
+            type="button"
+            className={logoEnabled ? "active" : ""}
+            aria-pressed={logoEnabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              window.__canvasTool?.("logo");
+            }}
+          >
+            左上角 Logo
+          </button>
+          <button
+            type="button"
+            className={searchEnabled ? "active" : ""}
+            aria-pressed={searchEnabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              window.__canvasTool?.("search");
+            }}
+          >
+            右下角搜索框
+          </button>
         </div>
       )}
     </div>
@@ -80,11 +101,11 @@ function CanvasControls({ showMini, onToggleMini }) {
   return (
     <div className="cf-extra-controls">
       <button type="button" className={showMini ? "active" : ""} onClick={onToggleMini} title="缩略图" aria-label="缩略图">
-        <span className="cf-minimap-icon" />
+        <img src="/ui-assets/icon/canvas-minimap.png" alt="" />
       </button>
       <span className="cf-control-divider" />
-      <button type="button" onClick={() => zoomOut({ duration: 180 })} title="缩小" aria-label="缩小">−</button>
-      <button type="button" onClick={() => zoomIn({ duration: 180 })} title="放大" aria-label="放大">＋</button>
+      <button type="button" onClick={() => zoomOut({ duration: 180 })} title="缩小" aria-label="缩小"><img src="/ui-assets/icon/canvas-zoom-out.png" alt="" /></button>
+      <button type="button" onClick={() => zoomIn({ duration: 180 })} title="放大" aria-label="放大"><img src="/ui-assets/icon/canvas-zoom-in.png" alt="" /></button>
     </div>
   );
 }
@@ -105,6 +126,10 @@ function CanvasApp() {
   const [composerSettings, setComposerSettings] = useState({ image_size: "3:4", style_name: "风格预设" });
   const [flowInstance, setFlowInstance] = useState(null);
   const [composerHasText, setComposerHasText] = useState(false);
+  const [composerReferences, setComposerReferences] = useState([]);
+  const [referencesLoading, setReferencesLoading] = useState(false);
+  const [composerExpanding, setComposerExpanding] = useState(false);
+  const [showSizeMenu, setShowSizeMenu] = useState(false);
 
   const messagesRef = useRef([]);
   const lastTypoRef = useRef(null);
@@ -140,6 +165,7 @@ function CanvasApp() {
     const id = `${kind}-${row}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
     const labels = { typography: "第一步版式图", kv: "完整 KV", title: "标题图层", background: "背景图层" };
     const xByKind = { typography: 80, kv: 420, title: 760, background: 1100 };
+    const overlaySettings = window.__getCanvasSettings?.() || {};
     const node = {
       id,
       type: "image",
@@ -150,6 +176,8 @@ function CanvasApp() {
         name,
         objectKey: objectKey || (name ? `outputs/${name}` : ""),
         label: labels[kind] || "完整 KV",
+        includeLogo: Boolean(overlaySettings.include_logo),
+        includeSearch: Boolean(overlaySettings.include_search_overlay),
         onSplit: (data) => splitHandlerRef.current(data),
       },
     };
@@ -232,7 +260,7 @@ function CanvasApp() {
         style_preset: merged.style_preset || "none",
         integrated_layout_variant: merged.integrated_layout_variant || "",
         generate_image: "true",
-        doudou_ip: merged.doudou_ip ? "true" : "false",
+        doudou_ip: /兜兜/.test(text) ? "true" : "false",
         include_logo: merged.include_logo ? "true" : "false",
         include_search_overlay: merged.include_search_overlay ? "true" : "false",
         project_id: session.projectId,
@@ -315,18 +343,38 @@ function CanvasApp() {
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
   useEffect(() => {
-    const sync = (event) => setComposerSettings((current) => ({ ...current, ...(event.detail || {}) }));
+    const sync = (event) => {
+      const settings = event.detail || {};
+      setComposerSettings((current) => ({ ...current, ...settings }));
+      setNodes((current) => current.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          includeLogo: Boolean(settings.include_logo),
+          includeSearch: Boolean(settings.include_search_overlay),
+        },
+      })));
+    };
     const syncPrompt = (event) => {
       const value = String(event.detail?.value || "");
       if (chatInputRef.current) chatInputRef.current.value = value;
       window.__canvasPromptValue = value;
       setComposerHasText(Boolean(value.trim()));
     };
+    const syncReferences = (event) => {
+      setComposerReferences(Array.isArray(event.detail?.references) ? event.detail.references : []);
+      setReferencesLoading(Boolean(event.detail?.loading));
+    };
+    const syncExpand = (event) => setComposerExpanding(Boolean(event.detail?.loading));
     window.addEventListener("refra:canvas-settings", sync);
     window.addEventListener("refra:canvas-prompt", syncPrompt);
+    window.addEventListener("refra:canvas-references", syncReferences);
+    window.addEventListener("refra:canvas-expand", syncExpand);
     return () => {
       window.removeEventListener("refra:canvas-settings", sync);
       window.removeEventListener("refra:canvas-prompt", syncPrompt);
+      window.removeEventListener("refra:canvas-references", syncReferences);
+      window.removeEventListener("refra:canvas-expand", syncExpand);
     };
   }, []);
 
@@ -341,6 +389,10 @@ function CanvasApp() {
       setAllMessages([]);
       setChatCollapsed(false);
       setShowMini(false);
+      setShowSizeMenu(false);
+      setComposerExpanding(false);
+      setReferencesLoading(false);
+      setComposerReferences(window.__getReferencePreviews?.() || []);
       const project = init?.project || null;
       setTitle(project?.title || "Untitled");
       setComposerSettings({ image_size: "3:4", style_name: "风格预设", ...(project?.settings || {}) });
@@ -359,6 +411,8 @@ function CanvasApp() {
           name: element.name,
           objectKey: element.object_key,
           label: labels[element.kind] || "完整 KV",
+          includeLogo: Boolean(project?.settings?.include_logo),
+          includeSearch: Boolean(project?.settings?.include_search_overlay),
           onSplit: (data) => splitHandlerRef.current(data),
         },
       }));
@@ -495,13 +549,13 @@ function CanvasApp() {
       </div>
 
       {chatCollapsed ? (
-        <button type="button" className="cf-chat-expand" onClick={() => setChatCollapsed(false)} title="展开对话" aria-label="展开对话">←|</button>
+        <button type="button" className="cf-chat-expand" onClick={() => setChatCollapsed(false)} title="展开对话" aria-label="展开对话"><img src="/ui-assets/icon/canvas-collapse.png" alt="" /></button>
       ) : (
         <div className="canvas-app-chat" ref={chatPanelRef} style={{ width: chatWidth }}>
           <div className="canvas-chat-resize" onMouseDown={startResize} title="拖拽调整宽度" />
           <div className="cf-chat-head">
             <span className="cf-chat-title">{messages.length ? (session?.visual_description || title).slice(0, 40) : "新对话"}</span>
-            <button type="button" className="cf-chat-collapse" onClick={() => setChatCollapsed(true)} title="收起" aria-label="收起对话">|→</button>
+            <button type="button" className="cf-chat-collapse" onClick={() => setChatCollapsed(true)} title="收起" aria-label="收起对话"><img src="/ui-assets/icon/canvas-collapse.png" alt="" /></button>
           </div>
           <div className="cf-chat-messages">
             {!messages.length && <div className="cf-chat-empty">今天想创作什么？</div>}
@@ -531,11 +585,39 @@ function CanvasApp() {
                 }}
               />
             </div>
+            {(referencesLoading || composerReferences.length > 0) && (
+              <div className="cf-composer-references" aria-live="polite">
+                {composerReferences.map((reference) => (
+                  <div className="cf-composer-reference" key={`${reference.index}-${reference.name}`} title={reference.name}>
+                    <img src={reference.url} alt={reference.name || `参考图${reference.index + 1}`} />
+                    <button type="button" onClick={() => window.__removeReferenceFile?.(reference.index)} aria-label={`移除${reference.name || "参考图"}`}>×</button>
+                  </div>
+                ))}
+                {referencesLoading && <span className="cf-reference-loading">处理中…</span>}
+              </div>
+            )}
+            {showSizeMenu && (
+              <div className="cf-canvas-size-popover" role="listbox" aria-label="选择比例">
+                {["16:9", "9:16", "3:4", "4:3", "1:1"].map((ratio) => (
+                  <button
+                    type="button"
+                    key={ratio}
+                    className={composerSettings.image_size === ratio ? "selected" : ""}
+                    onClick={() => {
+                      window.__setCanvasImageSize?.(ratio);
+                      setShowSizeMenu(false);
+                    }}
+                  >
+                    <span className={`size-icon ratio-${ratio.replace(":", "")}`} />{ratio}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="cf-composer-tools">
-              <button type="button" className="cf-composer-upload" title="上传参考图" onClick={invokeTool("upload")}>＋</button>
+              <button type="button" className="cf-composer-upload" title="上传参考图" onClick={invokeTool("upload")}><img src="/ui-assets/icon/canvas-upload.png" alt="" /></button>
               <button type="button" onClick={invokeTool("style")}><img src="/ui-assets/fengge.png" alt="" />{composerSettings.style_name || "风格预设"}</button>
-              <button type="button" onClick={invokeTool("size")}><span className={`size-icon ratio-${String(composerSettings.image_size || "3:4").replace(":", "")}`} />{composerSettings.image_size || "3:4"}</button>
-              <button type="button" onClick={invokeTool("expand")}><img src="/ui-assets/size.png" alt="" />扩写</button>
+              <button type="button" className={showSizeMenu ? "active" : ""} onClick={() => setShowSizeMenu((value) => !value)}><span className={`size-icon ratio-${String(composerSettings.image_size || "3:4").replace(":", "")}`} />{composerSettings.image_size || "3:4"}</button>
+              <button type="button" disabled={composerExpanding} onClick={invokeTool("expand")}><img src="/ui-assets/size.png" alt="" />{composerExpanding ? "扩写中" : "扩写"}</button>
               <button type="button" className={`cf-composer-send${composerHasText ? " active" : ""}`} onClick={sendChat} title="发送">
                 <img src="/ui-assets/runButton.png" alt="" />
               </button>
