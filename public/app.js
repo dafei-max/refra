@@ -1746,7 +1746,7 @@ function projectCardHtml(project) {
         <h3>${escapeHtml(title)}</h3>
         <div class="project-card-actions">
           <button type="button" class="project-menu-trigger" aria-label="项目操作" aria-haspopup="menu" aria-expanded="false">
-            <img src="/ui-assets/icon/project-more.svg" alt="" />
+            <img src="/ui-assets/icon/project-more.png" alt="" />
           </button>
           <div class="project-card-menu hidden" role="menu">
             <button type="button" class="project-menu-item rename" data-project-rename role="menuitem">

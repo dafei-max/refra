@@ -62,6 +62,8 @@ test("selected canvas nodes are image-only and shadowless", () => {
 
 test("project cards expose Figma menu actions and protected rename/delete flows", () => {
   assert.match(app, /class="project-menu-trigger"/);
+  assert.match(app, /project-more\.png/);
+  assert.doesNotMatch(app, /project-more\.svg/);
   assert.match(app, /data-project-rename/);
   assert.match(app, /data-project-delete/);
   assert.match(app, /method: "PATCH"/);
