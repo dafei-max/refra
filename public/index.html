@@ -270,6 +270,30 @@
       </section>
     </div>
 
+    <div id="projectActionModal" class="project-action-modal hidden">
+      <button type="button" class="project-dialog-scrim" data-close-project-action aria-label="关闭"></button>
+      <section class="project-dialog" role="dialog" aria-modal="true" aria-labelledby="projectActionTitle">
+        <div class="project-dialog-head">
+          <h3 id="projectActionTitle">重命名项目</h3>
+          <button type="button" class="invite-close" data-close-project-action aria-label="关闭">
+            <img src="/ui-assets/icon/close-round.png" alt="" />
+          </button>
+        </div>
+        <div class="project-dialog-body">
+          <label id="projectRenameField" class="project-rename-field">
+            <span class="sr-only">项目名称</span>
+            <input id="projectRenameInput" type="text" maxlength="60" autocomplete="off" placeholder="请输入项目名称" />
+          </label>
+          <p id="projectDeleteCopy" class="project-delete-copy hidden"></p>
+          <p id="projectActionError" class="project-action-error hidden"></p>
+          <div class="project-dialog-actions">
+            <button id="projectActionCancel" type="button" class="project-dialog-button secondary">取消</button>
+            <button id="projectActionConfirm" type="button" class="project-dialog-button primary">确定</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <div id="materialDetailModal" class="detail-modal hidden">
       <button type="button" class="modal-scrim" data-close-material-detail aria-label="关闭"></button>
       <section class="detail-card" role="dialog" aria-modal="true" aria-label="素材详情">

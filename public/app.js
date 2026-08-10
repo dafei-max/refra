@@ -17,6 +17,14 @@ const inviteError = document.querySelector("#inviteError");
 const inviteConfirmButton = document.querySelector("#inviteConfirmButton");
 const projectsGrid = document.querySelector("#projectsGrid");
 const homeInspirationTabs = document.querySelector("#homeInspirationTabs");
+const projectActionModal = document.querySelector("#projectActionModal");
+const projectActionTitle = document.querySelector("#projectActionTitle");
+const projectRenameField = document.querySelector("#projectRenameField");
+const projectRenameInput = document.querySelector("#projectRenameInput");
+const projectDeleteCopy = document.querySelector("#projectDeleteCopy");
+const projectActionError = document.querySelector("#projectActionError");
+const projectActionCancel = document.querySelector("#projectActionCancel");
+const projectActionConfirm = document.querySelector("#projectActionConfirm");
 
 // Scrub tokens left by builds that used persistent storage. Current credentials are tab-scoped only.
 try { localStorage.removeItem(ADMIN_TOKEN_KEY); } catch {}
@@ -154,6 +162,7 @@ let inspirationItems = [];
 let activeInspiration = null;
 let lastInspirationKeyword = "";
 let inspirationRequestSerial = 0;
+let activeProjectAction = null;
 let stageState = {
   brief: { label: "Brief理解", status: "idle", content: "" },
   creative: { label: "创意策略", status: "idle", content: "" },
@@ -1726,13 +1735,29 @@ async function fetchProjects() {
 }
 
 function projectCardHtml(project) {
+  const title = project.title || "Untitled";
   const cover = project.thumbnail_url
-    ? `<img src="${escapeHtml(project.thumbnail_url)}" alt="${escapeHtml(project.title || "Untitled")}" loading="lazy" />`
+    ? `<img src="${escapeHtml(project.thumbnail_url)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async" />`
     : "";
-  return `<article class="project-card" data-project-id="${escapeHtml(project.id)}">
-    <div class="project-card-thumb${project.thumbnail_url ? "" : " placeholder"}">${cover}</div>
+  return `<article class="project-card" data-project-id="${escapeHtml(project.id)}" data-project-title="${escapeHtml(title)}">
+    <div class="project-card-thumb${project.thumbnail_url ? " is-loading" : " placeholder"}">${cover}</div>
     <div class="project-card-body">
-      <h3>${escapeHtml(project.title || "Untitled")}</h3>
+      <div class="project-card-title-row">
+        <h3>${escapeHtml(title)}</h3>
+        <div class="project-card-actions">
+          <button type="button" class="project-menu-trigger" aria-label="项目操作" aria-haspopup="menu" aria-expanded="false">
+            <img src="/ui-assets/icon/project-more.svg" alt="" />
+          </button>
+          <div class="project-card-menu hidden" role="menu">
+            <button type="button" class="project-menu-item rename" data-project-rename role="menuitem">
+              <img src="/ui-assets/icon/project-rename.png" alt="" /><span>重命名</span>
+            </button>
+            <button type="button" class="project-menu-item delete" data-project-delete role="menuitem">
+              <img src="/ui-assets/icon/project-delete.png" alt="" /><span>删除</span>
+            </button>
+          </div>
+        </div>
+      </div>
       <p>${projectUpdatedLabel(project.updated_at || project.created_at)}</p>
     </div>
   </article>`;
@@ -1745,32 +1770,131 @@ function newProjectCardHtml() {
   </div>`;
 }
 
-function renderProjectsInto(container, projects, { withNewCard = false, limit = 0 } = {}) {
-  const list = limit > 0 ? projects.slice(0, limit) : projects;
-  const cards = [...(withNewCard ? [newProjectCardHtml()] : []), ...list.map(projectCardHtml)];
+function projectSkeletonCardHtml() {
+  return `<div class="project-card project-card-skeleton" aria-hidden="true">
+    <div class="project-skeleton-thumb"></div>
+    <div class="project-skeleton-copy">
+      <span class="project-skeleton-line title"></span>
+      <span class="project-skeleton-line meta"></span>
+    </div>
+  </div>`;
+}
+
+function renderProjectSkeletons(container, { withNewCard = false, count = 5 } = {}) {
+  const cards = [
+    ...(withNewCard ? [newProjectCardHtml()] : []),
+    ...Array.from({ length: Math.max(1, count - (withNewCard ? 1 : 0)) }, projectSkeletonCardHtml),
+  ];
   container.classList.remove("empty-state");
-  container.innerHTML = cards.length ? cards.join("") : `<div class="empty-state">暂无项目，去生成第一张吧</div>`;
-  if (withNewCard) {
-    container.querySelector("[data-new-project]")?.addEventListener("click", () => {
-      createProject().catch((error) => setError(error.message));
-    });
-  }
+  container.setAttribute("aria-busy", "true");
+  container.innerHTML = cards.join("");
+  bindProjectCardInteractions(container);
+}
+
+function closeProjectMenus(except = null) {
+  document.querySelectorAll(".project-card-menu:not(.hidden)").forEach((menu) => {
+    if (menu === except) return;
+    menu.classList.add("hidden");
+    const trigger = menu.closest(".project-card-actions")?.querySelector(".project-menu-trigger");
+    trigger?.classList.remove("active");
+    trigger?.setAttribute("aria-expanded", "false");
+  });
+}
+
+function closeProjectActionModal() {
+  activeProjectAction = null;
+  projectActionModal.classList.add("hidden");
+  projectActionError.classList.add("hidden");
+  projectActionError.textContent = "";
+  projectActionConfirm.disabled = false;
+}
+
+function openProjectActionModal(mode, project) {
+  activeProjectAction = { mode, id: project.id, title: project.title || "Untitled" };
+  const deleting = mode === "delete";
+  projectActionTitle.textContent = deleting ? "删除项目？" : "重命名项目";
+  projectRenameField.classList.toggle("hidden", deleting);
+  projectDeleteCopy.classList.toggle("hidden", !deleting);
+  projectDeleteCopy.textContent = deleting
+    ? `删除后无法恢复，确认删除「${activeProjectAction.title}」吗？`
+    : "";
+  projectRenameInput.value = deleting ? "" : activeProjectAction.title;
+  projectActionConfirm.textContent = deleting ? "删除" : "确定";
+  projectActionConfirm.classList.toggle("danger", deleting);
+  projectActionError.classList.add("hidden");
+  projectActionModal.classList.remove("hidden");
+  requestAnimationFrame(() => (deleting ? projectActionConfirm : projectRenameInput).focus());
+}
+
+function bindProjectCardInteractions(container) {
+  container.querySelector("[data-new-project]")?.addEventListener("click", () => {
+    createProject().catch((error) => setError(error.message));
+  });
   container.querySelectorAll("[data-project-id]").forEach((card) => {
-    card.addEventListener("click", () => {
+    const project = { id: card.dataset.projectId, title: card.dataset.projectTitle || "Untitled" };
+    const thumb = card.querySelector(".project-card-thumb");
+    const image = thumb?.querySelector("img");
+    if (image) {
+      const finishImageLoading = () => thumb.classList.remove("is-loading");
+      if (image.complete) finishImageLoading();
+      else {
+        image.addEventListener("load", finishImageLoading, { once: true });
+        image.addEventListener("error", finishImageLoading, { once: true });
+      }
+    }
+    card.addEventListener("click", (event) => {
+      if (event.target.closest(".project-card-actions")) return;
       openCanvas(card.dataset.projectId).catch((error) => setError(error.message));
+    });
+    const trigger = card.querySelector(".project-menu-trigger");
+    const menu = card.querySelector(".project-card-menu");
+    trigger?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const opening = menu.classList.contains("hidden");
+      closeProjectMenus(opening ? menu : null);
+      menu.classList.toggle("hidden", !opening);
+      trigger.classList.toggle("active", opening);
+      trigger.setAttribute("aria-expanded", opening ? "true" : "false");
+    });
+    card.querySelector("[data-project-rename]")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeProjectMenus();
+      openProjectActionModal("rename", project);
+    });
+    card.querySelector("[data-project-delete]")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeProjectMenus();
+      openProjectActionModal("delete", project);
     });
   });
 }
 
+function renderProjectsInto(container, projects, { withNewCard = false, limit = 0 } = {}) {
+  const list = limit > 0 ? projects.slice(0, limit) : projects;
+  const cards = [...(withNewCard ? [newProjectCardHtml()] : []), ...list.map(projectCardHtml)];
+  container.classList.remove("empty-state");
+  container.removeAttribute("aria-busy");
+  container.innerHTML = cards.length ? cards.join("") : `<div class="empty-state">暂无项目，去生成第一张吧</div>`;
+  bindProjectCardInteractions(container);
+}
+
 async function loadProjects() {
+  renderProjectSkeletons(projectsGrid, { withNewCard: true, count: 10 });
   const projects = await fetchProjects();
   renderProjectsInto(projectsGrid, projects, { withNewCard: true });
   return projects;
 }
 
 async function loadRecentProjects() {
+  renderProjectSkeletons(recentProjects, { withNewCard: true, count: 5 });
   const projects = await fetchProjects().catch(() => []);
   renderProjectsInto(recentProjects, projects, { withNewCard: true, limit: 4 });
+}
+
+async function refreshProjectCards() {
+  const projects = await fetchProjects();
+  renderProjectsInto(recentProjects, projects, { withNewCard: true, limit: 4 });
+  renderProjectsInto(projectsGrid, projects, { withNewCard: true });
 }
 
 let homeMaterialTab = "全部";
@@ -1783,19 +1907,43 @@ function homeMaterialsForTab(materials) {
   });
 }
 
+function renderHomeInspirationSkeletons() {
+  const heights = [178, 244, 204, 266, 188, 232, 196, 254, 216, 184];
+  homeInspiration.classList.remove("empty-state");
+  homeInspiration.setAttribute("aria-busy", "true");
+  homeInspiration.innerHTML = heights.map((height) => (
+    `<div class="material-skeleton-card" style="--skeleton-height:${height}px" aria-hidden="true"></div>`
+  )).join("");
+}
+
+function bindHomeInspirationImages(container) {
+  container.querySelectorAll(".material-thumb.is-loading").forEach((button) => {
+    const image = button.querySelector("img");
+    const finish = () => button.classList.remove("is-loading");
+    if (!image || image.complete) finish();
+    else {
+      image.addEventListener("load", finish, { once: true });
+      image.addEventListener("error", finish, { once: true });
+    }
+  });
+}
+
 async function loadHomeInspiration() {
+  renderHomeInspirationSkeletons();
   const role = homeMaterialTab === "全部" ? "" : homeMaterialTab;
   const params = new URLSearchParams({ limit: "10" });
   if (role) params.set("role", role);
   const payload = await fetch(`/api/materials?${params}`).then((response) => response.json()).catch(() => ({ materials: [] }));
   const list = homeMaterialsForTab(payload.materials || []).slice(0, 10);
   homeInspiration.classList.remove("empty-state");
+  homeInspiration.removeAttribute("aria-busy");
   homeInspiration.innerHTML = list.length
     ? list.map((material) => `
-        <button type="button" class="material-thumb" data-material-number="${escapeHtml(material.number || "")}">
-          <img src="${escapeHtml(material.image || "")}" alt="" loading="lazy" />
+        <button type="button" class="material-thumb is-loading" data-material-number="${escapeHtml(material.number || "")}">
+          <img src="${escapeHtml(material.image || "")}" alt="" loading="lazy" decoding="async" />
         </button>`).join("")
     : `<div class="empty-state">暂无灵感素材</div>`;
+  bindHomeInspirationImages(homeInspiration);
   homeInspiration.querySelectorAll("[data-material-number]").forEach((button) => {
     button.addEventListener("click", () => {
       const material = (payload.materials || []).find((item) => item.number === button.dataset.materialNumber);
@@ -2151,6 +2299,59 @@ inviteConfirmButton.addEventListener("click", async () => {
 
 inviteTokenInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !inviteConfirmButton.disabled) inviteConfirmButton.click();
+});
+
+projectActionModal.querySelectorAll("[data-close-project-action]").forEach((node) => {
+  node.addEventListener("click", closeProjectActionModal);
+});
+projectActionCancel.addEventListener("click", closeProjectActionModal);
+projectRenameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") projectActionConfirm.click();
+});
+projectActionConfirm.addEventListener("click", async () => {
+  if (!activeProjectAction) return;
+  const deleting = activeProjectAction.mode === "delete";
+  const nextTitle = projectRenameInput.value.trim();
+  if (!deleting && !nextTitle) {
+    projectActionError.textContent = "请输入项目名称";
+    projectActionError.classList.remove("hidden");
+    projectRenameInput.focus();
+    return;
+  }
+  projectActionConfirm.disabled = true;
+  projectActionError.classList.add("hidden");
+  const idleText = deleting ? "删除" : "确定";
+  projectActionConfirm.textContent = deleting ? "删除中…" : "保存中…";
+  try {
+    const options = deleting
+      ? { method: "DELETE" }
+      : {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: nextTitle }),
+        };
+    const response = await apiFetch(`/api/projects/${encodeURIComponent(activeProjectAction.id)}`, options);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || (deleting ? "删除项目失败" : "重命名失败"));
+    closeProjectActionModal();
+    await refreshProjectCards();
+  } catch (error) {
+    projectActionError.textContent = error.message;
+    projectActionError.classList.remove("hidden");
+  } finally {
+    projectActionConfirm.disabled = false;
+    if (!projectActionModal.classList.contains("hidden")) projectActionConfirm.textContent = idleText;
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".project-card-actions")) closeProjectMenus();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  closeProjectMenus();
+  if (!projectActionModal.classList.contains("hidden")) closeProjectActionModal();
 });
 
 libraryTabs.querySelectorAll("[data-material-tab]").forEach((button) => {

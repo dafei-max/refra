@@ -4194,3 +4194,346 @@ body {
 .canvas-page .cf-node > img {
   border-radius: 0;
 }
+
+/* Project card actions, loading shells and smooth modal scrims */
+.invite-modal,
+.project-action-modal {
+  background: rgba(6, 6, 6, 0.74);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+.project-card {
+  position: relative;
+}
+
+.project-card-title-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 24px;
+}
+
+.project-card-title-row h3 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.project-card-actions {
+  position: relative;
+  z-index: 12;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+}
+
+.project-menu-trigger {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.project-menu-trigger:hover,
+.project-menu-trigger.active {
+  background: #232323;
+}
+
+.project-menu-trigger:focus,
+.project-menu-trigger:focus-visible,
+.project-menu-item:focus,
+.project-menu-item:focus-visible {
+  outline: none;
+}
+
+.project-menu-trigger img {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.project-card-menu {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  z-index: 40;
+  width: 128px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 0.5px solid #525252;
+  border-radius: 16px;
+  background: rgba(29, 29, 29, 0.96);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.project-menu-item {
+  width: 120px;
+  height: 30px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+}
+
+.project-menu-item img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  object-fit: contain;
+}
+
+.project-menu-item.rename:hover,
+.project-menu-item.rename:focus-visible {
+  background: #232323;
+}
+
+.project-menu-item.delete {
+  color: #ea6153;
+}
+
+.project-menu-item.delete:hover,
+.project-menu-item.delete:focus-visible {
+  background: rgba(234, 97, 83, 0.2);
+}
+
+.project-action-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: grid;
+  place-items: center;
+}
+
+.project-dialog-scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.project-dialog {
+  position: relative;
+  width: 441px;
+  max-width: calc(100vw - 32px);
+  padding: 16px 24px 24px;
+  border-radius: 24px;
+  background: #212121;
+}
+
+.project-dialog-head {
+  height: 38px;
+  padding: 5px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.project-dialog-head h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+.project-dialog-head .invite-close img {
+  width: 16px;
+  height: 16px;
+}
+
+.project-dialog-body {
+  margin-top: 16px;
+}
+
+.project-rename-field {
+  display: block;
+}
+
+.project-rename-field input {
+  width: 100%;
+  height: 50px;
+  padding: 10px 12px;
+  border: 0.5px solid #525252;
+  border-radius: 12px;
+  outline: none;
+  background: #303030;
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+}
+
+.project-rename-field input:focus {
+  border-color: #005aff;
+}
+
+.project-delete-copy {
+  min-height: 50px;
+  margin: 0;
+  padding: 13px 14px;
+  border: 0.5px solid #525252;
+  border-radius: 12px;
+  background: #303030;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  line-height: 24px;
+}
+
+.project-action-error {
+  margin: 10px 0 0;
+  color: #ea6153;
+  font-size: 12px;
+}
+
+.project-dialog-actions {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.project-dialog-button {
+  height: 50px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.project-dialog-button.secondary {
+  border: 0.5px solid #525252;
+  background: #303030;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.project-dialog-button.primary {
+  background: #fff;
+  color: #212121;
+}
+
+.project-dialog-button.primary.danger {
+  background: #ea6153;
+  color: #fff;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.project-card-skeleton {
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.project-skeleton-thumb,
+.project-skeleton-line,
+.material-skeleton-card,
+.project-card-thumb.is-loading,
+.material-thumb.is-loading {
+  position: relative;
+  overflow: hidden;
+  background: #232323;
+}
+
+.project-skeleton-thumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+}
+
+.project-skeleton-copy {
+  padding: 9px 4px 0;
+}
+
+.project-skeleton-line {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+}
+
+.project-skeleton-line.title {
+  width: 62%;
+}
+
+.project-skeleton-line.meta {
+  width: 42%;
+  height: 9px;
+  margin-top: 8px;
+}
+
+.material-skeleton-card {
+  width: 100%;
+  height: var(--skeleton-height, 210px);
+  margin: 0 0 4px;
+  break-inside: avoid;
+}
+
+.material-thumb.is-loading {
+  min-height: 180px;
+}
+
+.project-card-thumb.is-loading img,
+.material-thumb.is-loading img {
+  opacity: 0;
+}
+
+.project-card-thumb img,
+.material-thumb img {
+  transition: opacity 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.project-card-skeleton::after,
+.material-skeleton-card::after,
+.project-card-thumb.is-loading::after,
+.material-thumb.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.055) 48%, transparent 76%);
+  transform: translateX(-120%);
+  animation: uiSkeletonSweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes uiSkeletonSweep {
+  to { transform: translateX(120%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-card-skeleton::after,
+  .material-skeleton-card::after,
+  .project-card-thumb.is-loading::after,
+  .material-thumb.is-loading::after {
+    animation: none;
+    opacity: 0.35;
+  }
+}

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +13,7 @@ const [app, canvas, index, styles, server] = await Promise.all([
   readFile(path.join(root, "public", "styles.css"), "utf-8"),
   readFile(path.join(root, "server.mjs"), "utf-8"),
 ]);
+const runButton = await readFile(path.join(root, "public", "ui-assets", "runButton.png"));
 
 test("admin token masking does not register as a browser password field", () => {
   assert.match(index, /id="inviteTokenInput" type="text"/);
@@ -56,4 +58,28 @@ test("selected canvas nodes are image-only and shadowless", () => {
   assert.match(styles, /\.canvas-page \.cf-node\s*\{[\s\S]*?box-shadow: none;/);
   assert.match(styles, /background: rgba\(15, 15, 15, 0\.72\)/);
   assert.match(styles, /rgba\(255, 255, 255, 0\.08\) 1px/);
+});
+
+test("project cards expose Figma menu actions and protected rename/delete flows", () => {
+  assert.match(app, /class="project-menu-trigger"/);
+  assert.match(app, /data-project-rename/);
+  assert.match(app, /data-project-delete/);
+  assert.match(app, /method: "PATCH"/);
+  assert.match(app, /method: "DELETE"/);
+  assert.match(index, /id="projectActionModal"/);
+  assert.match(index, /id="projectDeleteCopy"/);
+  assert.match(styles, /background: rgba\(234, 97, 83, 0\.2\)/);
+});
+
+test("project and inspiration modules use reduced-motion-aware shimmer loading shells", () => {
+  assert.match(app, /renderProjectSkeletons/);
+  assert.match(app, /renderHomeInspirationSkeletons/);
+  assert.match(styles, /@keyframes uiSkeletonSweep/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /backdrop-filter: blur\(24px\)/);
+});
+
+test("run button uses the supplied notification artwork", () => {
+  const digest = createHash("sha256").update(runButton).digest("hex");
+  assert.equal(digest, "3643c38971d70eca8f0ba0dd42c196eaf0dccd729f5c3bf85183d6804553dabb");
 });
