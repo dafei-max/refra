@@ -105,6 +105,7 @@ const SEARCH_DARK_BG_PATH = path.join(IMAGE_DIR, "search_dark.png");
 const SEARCH_WIDTH = 295;
 const SEARCH_RIGHT = 44;
 const SEARCH_BOTTOM = 22;
+const MATERIAL_LIBRARY_VERSION = 2;
 const PACKAGED_MATERIALS_PATH = path.join(__dirname, "data", "materials.json");
 const MATERIALS_PATH = IS_VERCEL
   ? path.join(RUNTIME_ROOT, "data", "materials.json")
@@ -2174,7 +2175,18 @@ async function loadMaterials() {
   if (IS_OSS) {
     try {
       const payload = JSON.parse((await storageGet("data/materials.json")).toString("utf-8"));
-      return (payload.materials || []).map(normalizeMaterial).filter((item) => item.number && item.type);
+      const materials = (payload.materials || []).map(normalizeMaterial).filter((item) => item.number && item.type);
+      if (Number(payload.library_version || 0) < MATERIAL_LIBRARY_VERSION) {
+        for (const material of materials) {
+          try {
+            await deleteUploadedMaterialImage(material);
+          } catch {
+            // The index reset must still complete if one historical object is already missing.
+          }
+        }
+        return saveMaterials([]);
+      }
+      return materials;
     } catch (error) {
       if (!(error instanceof StorageError)) throw error;
       if (!existsSync(PACKAGED_MATERIALS_PATH)) return [];
@@ -2191,7 +2203,12 @@ async function loadMaterials() {
 
 async function saveMaterials(materials) {
   const normalized = materials.map(normalizeMaterial).filter((item) => item.number && item.type);
-  const payload = JSON.stringify({ source: "dynamic-material-library", count: normalized.length, materials: normalized }, null, 2);
+  const payload = JSON.stringify({
+    source: "dynamic-material-library",
+    library_version: MATERIAL_LIBRARY_VERSION,
+    count: normalized.length,
+    materials: normalized,
+  }, null, 2);
   if (IS_OSS) {
     await storagePut("data/materials.json", Buffer.from(payload, "utf-8"), { contentType: "application/json" });
     return normalized;
