@@ -28,6 +28,15 @@ function requireInvite(response) {
   window.__openInviteModal?.();
 }
 
+function composerMentionRange(value, cursor) {
+  const before = String(value || "").slice(0, cursor);
+  const start = before.lastIndexOf("@");
+  if (start < 0) return null;
+  const query = before.slice(start + 1);
+  if (/[\s，。；;,.!?！？、]/.test(query)) return null;
+  return { start, end: cursor, query: query.trim().toLowerCase() };
+}
+
 function ImageNode({ data, selected }) {
   const [splitting, setSplitting] = useState(false);
   const logoEnabled = Boolean(data.includeLogo);
@@ -130,6 +139,7 @@ function CanvasApp() {
   const [referencesLoading, setReferencesLoading] = useState(false);
   const [composerExpanding, setComposerExpanding] = useState(false);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
+  const [composerMention, setComposerMention] = useState(null);
 
   const messagesRef = useRef([]);
   const lastTypoRef = useRef(null);
@@ -267,7 +277,11 @@ function CanvasApp() {
       };
       for (const [key, value] of Object.entries(fields)) body.append(key, String(value));
       const referenceFiles = files.length ? files : (typeof window.__getReferenceFiles === "function" ? window.__getReferenceFiles() : []);
-      for (const file of referenceFiles) body.append("reference_image", file, file.name);
+      const referenceLabels = typeof window.__getReferenceLabels === "function"
+        ? window.__getReferenceLabels().slice(0, referenceFiles.length)
+        : referenceFiles.map((_, index) => `图${index + 1}`);
+      body.append("reference_labels", JSON.stringify(referenceLabels));
+      referenceFiles.forEach((file, index) => body.append(`reference_image_${index}`, file, file.name));
       const response = await fetch("/api/run-stream", { method: "POST", headers: authHeaders(), body });
       await parseSse(response);
       updateStatusMessage("生成完成");
@@ -390,6 +404,7 @@ function CanvasApp() {
       setChatCollapsed(false);
       setShowMini(false);
       setShowSizeMenu(false);
+      setComposerMention(null);
       setComposerExpanding(false);
       setReferencesLoading(false);
       setComposerReferences(window.__getReferencePreviews?.() || []);
@@ -458,8 +473,35 @@ function CanvasApp() {
     input.value = "";
     window.__canvasPromptValue = "";
     setComposerHasText(false);
+    setComposerMention(null);
     runGeneration({ visual_description: text }, []);
   }, [generating, session, runGeneration]);
+
+  const refreshComposerMention = useCallback((input) => {
+    setComposerMention(composerMentionRange(input?.value, input?.selectionStart || 0));
+  }, []);
+
+  const insertComposerMention = useCallback((reference) => {
+    const input = chatInputRef.current;
+    if (!input || !composerMention) return;
+    const token = `@${reference.label || `图${reference.index + 1}`} `;
+    input.value = `${input.value.slice(0, composerMention.start)}${token}${input.value.slice(composerMention.end)}`;
+    const cursor = composerMention.start + token.length;
+    window.__canvasPromptValue = input.value;
+    setComposerHasText(Boolean(input.value.trim()));
+    setComposerMention(null);
+    requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(cursor, cursor);
+    });
+  }, [composerMention]);
+
+  const mentionReferences = composerMention
+    ? composerReferences.filter((reference) => {
+        const label = reference.label || `图${reference.index + 1}`;
+        return !composerMention.query || `${label} ${reference.name || ""}`.toLowerCase().includes(composerMention.query);
+      })
+    : [];
 
   const commitTitle = useCallback(async () => {
     setEditingTitle(false);
@@ -576,8 +618,16 @@ function CanvasApp() {
                 onChange={(event) => {
                   window.__canvasPromptValue = event.target.value;
                   setComposerHasText(Boolean(event.target.value.trim()));
+                  refreshComposerMention(event.target);
                 }}
+                onClick={(event) => refreshComposerMention(event.currentTarget)}
+                onKeyUp={(event) => refreshComposerMention(event.currentTarget)}
                 onKeyDown={(event) => {
+                  if (event.key === "Escape" && composerMention) {
+                    event.preventDefault();
+                    setComposerMention(null);
+                    return;
+                  }
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     sendChat();
@@ -585,11 +635,29 @@ function CanvasApp() {
                 }}
               />
             </div>
+            {composerMention && (
+              <div className="cf-composer-mention-menu" role="listbox" aria-label="选择参考图">
+                <div className="cf-composer-mention-title">选择参考图（{mentionReferences.length}/{composerReferences.length}）</div>
+                {mentionReferences.length ? mentionReferences.map((reference) => (
+                  <button
+                    type="button"
+                    role="option"
+                    key={`${reference.label || reference.index}-${reference.name}`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => insertComposerMention(reference)}
+                  >
+                    <img src={reference.url} alt="" />
+                    <span>{reference.label || `图${reference.index + 1}`} - 图片</span>
+                  </button>
+                )) : <div className="cf-composer-mention-empty">没有匹配的参考图</div>}
+              </div>
+            )}
             {(referencesLoading || composerReferences.length > 0) && (
               <div className="cf-composer-references" aria-live="polite">
                 {composerReferences.map((reference) => (
-                  <div className="cf-composer-reference" key={`${reference.index}-${reference.name}`} title={reference.name}>
-                    <img src={reference.url} alt={reference.name || `参考图${reference.index + 1}`} />
+                  <div className="cf-composer-reference" key={`${reference.label || reference.index}-${reference.name}`} title={reference.name}>
+                    <img src={reference.url} alt={reference.name || reference.label || `参考图${reference.index + 1}`} />
+                    <span>{reference.label || `图${reference.index + 1}`}</span>
                     <button type="button" onClick={() => window.__removeReferenceFile?.(reference.index)} aria-label={`移除${reference.name || "参考图"}`}>×</button>
                   </div>
                 ))}

@@ -156,6 +156,7 @@ let allStylePresets = [];
 let activeIntegratedLayoutTab = "vertical";
 let activeMaterialTab = "全部";
 let referenceFiles = [];
+let nextReferenceNumber = 1;
 let isExpandingDescription = false;
 let activeMaterial = null;
 let inspirationItems = [];
@@ -478,7 +479,7 @@ function setImageSize(value) {
 }
 
 function referenceLabel(index) {
-  return `图${index + 1}`;
+  return referenceFiles[index]?.label || `图${index + 1}`;
 }
 
 function fileToDataUrl(file) {
@@ -491,6 +492,7 @@ function fileToDataUrl(file) {
 }
 
 const REFERENCE_UPLOAD_MAX_TOTAL = 600 * 1024;
+const REFERENCE_UPLOAD_MAX_COUNT = 9;
 const REFERENCE_COMPRESS_ATTEMPTS = [
   { type: "image/webp", quality: 0.85, maxDim: 1280 },
   { type: "image/jpeg", quality: 0.8, maxDim: 1280 },
@@ -581,6 +583,7 @@ function renderReferenceStrip() {
 function canvasReferencePreviews() {
   return referenceFiles.map((item, index) => ({
     index,
+    label: referenceLabel(index),
     name: item.file?.name || referenceLabel(index),
     url: item.url || item.dataUrl || "",
   }));
@@ -595,17 +598,26 @@ function removeReferenceFile(index) {
 }
 
 async function addReferenceFiles(files) {
+  const imageFiles = [...files].filter((file) => file.type.startsWith("image/"));
+  const availableSlots = Math.max(0, REFERENCE_UPLOAD_MAX_COUNT - referenceFiles.length);
+  const acceptedFiles = imageFiles.slice(0, availableSlots);
+  if (imageFiles.length > availableSlots) {
+    setError(`单次生成最多使用 ${REFERENCE_UPLOAD_MAX_COUNT} 张参考图，已保留前 ${availableSlots} 张。`);
+  }
   window.dispatchEvent(new CustomEvent("refra:canvas-references", {
     detail: { loading: true, references: canvasReferencePreviews() },
   }));
-  for (const file of files) {
-    if (!file.type.startsWith("image/")) continue;
+  for (const [fileIndex, file] of acceptedFiles.entries()) {
     try {
-      const prepared = await compressReferenceFile(file, REFERENCE_UPLOAD_MAX_TOTAL - referenceBytesUsed());
+      const filesRemaining = acceptedFiles.length - fileIndex;
+      const bytesRemaining = REFERENCE_UPLOAD_MAX_TOTAL - referenceBytesUsed();
+      const perFileBudget = Math.max(1, Math.floor(bytesRemaining / filesRemaining));
+      const prepared = await compressReferenceFile(file, perFileBudget);
       referenceFiles.push({
         file: prepared.file,
         url: URL.createObjectURL(prepared.file),
         dataUrl: prepared.dataUrl,
+        label: `图${nextReferenceNumber++}`,
       });
     } catch (error) {
       setError(error.message);
@@ -649,6 +661,7 @@ async function addMaterialReference(item) {
     file: prepared.file,
     url: item.image,
     dataUrl: prepared.dataUrl,
+    label: `图${nextReferenceNumber++}`,
     source: "material",
     materialNumber: item.number,
   });
@@ -695,18 +708,22 @@ function renderMentionMenu() {
     mentionMenu.innerHTML = "";
     return;
   }
+  const cursor = visualDescriptionInput.selectionStart;
+  const query = visualDescriptionInput.value.slice(start + 1, cursor).trim().toLowerCase();
+  const matchingReferences = referenceFiles
+    .map((item, index) => ({ item, index, label: referenceLabel(index) }))
+    .filter(({ item, label }) => !query || `${label} ${item.file?.name || ""}`.toLowerCase().includes(query));
   const options = [
-    `<button type="button" data-mention-value="@主体" class="mention-option mention-create"><span>+</span><strong>创建主体</strong></button>`,
-    ...referenceFiles.map(
-      (item, index) => `
-        <button type="button" data-mention-value="@${referenceLabel(index)}" class="mention-option">
+    ...matchingReferences.map(
+      ({ item, index, label }) => `
+        <button type="button" data-mention-value="@${label}" class="mention-option">
           <img src="${item.url}" alt="${referenceLabel(index)}" />
-          <span>${referenceLabel(index)} - 图片</span>
+          <span>${label} - 图片</span>
         </button>
       `,
     ),
   ];
-  mentionMenu.innerHTML = `<div class="mention-title">可能@的内容</div>${options.join("")}`;
+  mentionMenu.innerHTML = `<div class="mention-title">选择参考图（${matchingReferences.length}/${referenceFiles.length}）</div>${options.length ? options.join("") : '<div class="mention-empty">没有匹配的参考图</div>'}`;
   mentionMenu.classList.remove("hidden");
   mentionMenu.querySelectorAll("[data-mention-value]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2072,6 +2089,7 @@ window.__applyCanvasSettings = (settings = {}) => {
 };
 
 window.__getReferenceFiles = () => referenceFiles.map((item) => item.file);
+window.__getReferenceLabels = () => referenceFiles.map((_, index) => referenceLabel(index));
 window.__getReferencePreviews = canvasReferencePreviews;
 window.__removeReferenceFile = removeReferenceFile;
 window.__setCanvasImageSize = setImageSize;

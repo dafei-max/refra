@@ -2795,7 +2795,10 @@ async function readMultipart(req) {
     const type = headerText.match(/Content-Type:\s*([^\r\n]+)/i)?.[1] || "application/octet-stream";
     const data = Buffer.from(bodyText, "latin1");
     if (filename) {
-      files[name] = { filename, type, data };
+      let fileKey = name;
+      let duplicateIndex = 1;
+      while (files[fileKey]) fileKey = `${name}_${duplicateIndex++}`;
+      files[fileKey] = { filename, type, data };
     } else {
       fields[name] = data.toString("utf-8");
     }
@@ -4390,7 +4393,8 @@ function applyUploadedSubjectToDesign(request, design = {}) {
   if (!subjects.length) return design;
   const labels = subjects.map((item) => `@${item.label}`).join("、");
   const kinds = [...new Set(subjects.map((item) => item.kind))].join("/") || "对象";
-  const identityRule = `以用户上传${labels}中可见的原始${kinds}作为不可替换的主视觉主体；直接识别并保留其真实类别、轮廓、结构部件、包装比例、材质和可见识别特征；不得根据主题猜测或替换成另一种对象`;
+  const identityRules = subjects.map((item) => uploadedSubjectIdentityRule(item.label, item.kind));
+  const identityRule = `${identityRules.join("；")}；不同参考图分别约束对应主体，禁止在人物、产品之间混合、平均或互换身份特征`;
   return {
     ...design,
     uploaded_subject_constraint: {
@@ -5172,10 +5176,10 @@ function uploadedReferenceUsage(request, index = 0) {
       : "参考整体版式结构、画面层级、主体区域、信息区位置和空间透视关系；不复制具体物体、品牌、人物或文字。";
   }
   if (role === "主体" && uploadedReferenceSubjectKind(request, index) === "人物") {
-    return "参考主视觉主体人物的身份外观、姿态气质、服装轮廓和人物占位关系；主体以这张用户上传图中的人物为核心，不复制无关背景。";
+    return "这是同一位真人的身份参考，不是泛化的人物风格图。严格保持脸型、五官比例与间距、眉眼鼻唇、发际线、发型发色、肤色、年龄感和身体比例；仅在用户明确要求时改变服装、姿态、表情、场景与光影，不复制无关背景。";
   }
   if (role === "主体" && uploadedReferenceSubjectKind(request, index) === "产品") {
-    return "参考主视觉主体产品的外观结构、比例、材质和识别特征；主体以这张用户上传图中的产品为核心，不复制无关背景。";
+    return "这是同一件产品/SKU的身份参考，不是同品类示意图。严格保持产品轮廓、长宽比例、瓶身/包装结构、盖体或喷头、材质、主配色、图形与标签版位及可见品牌识别特征；只改变摆放、场景、构图与光影，不重新设计包装，不复制无关背景。";
   }
   if (role === "主体") {
     return "参考用户上传图中的主视觉主体身份、外观轮廓、结构部件、比例、材质和识别特征；主体必须是图中同一对象，只允许调整摆放、动作、场景、构图与光影，不得替换成其他对象。";
@@ -5205,6 +5209,16 @@ function buildUploadedReference(fileUrl, request, index = 0) {
     subject_kind: subjectKind,
     immutable_subject: role === "主体",
   };
+}
+
+function uploadedSubjectIdentityRule(label = "图1", kind = "对象") {
+  if (kind === "人物") {
+    return `@${label}是同一位真人的唯一身份来源：锁定脸型、五官结构与比例间距、眉眼鼻唇、发际线、发型发色、肤色、年龄感和身体比例；不得换脸、混入其他参考人物或生成相似但不同的人`;
+  }
+  if (kind === "产品") {
+    return `@${label}是同一件产品/SKU的唯一身份来源：锁定品类、整体轮廓、长宽比例、瓶身/包装结构、盖体或喷头、材质、主配色、图形与标签版位及可见品牌识别特征；不得换成同类替代品或重新设计包装`;
+  }
+  return `@${label}是同一原始对象的唯一身份来源：锁定类别、轮廓、结构部件、比例、材质、颜色和可见识别特征；不得替换、重设计或与其他参考对象混合`;
 }
 
 function integratedLayoutTypographyDirective(request, selected = []) {
@@ -5949,7 +5963,7 @@ function finalKvReferenceLines(selected = [], startIndex = 2) {
     const figure = `图 ${startIndex + index}（${item.number}）`;
     const role = textOf(item.role || item.type || "参考图").trim();
     if (item.source === "用户上传" && role === "主体") {
-      return `${figure}为用户主体参考：它是主体身份、外观、结构、比例、材质和识别特征的唯一依据，只允许调整动作、场景、构图与光影，禁止替换成其他对象。`;
+      return `${figure}为用户主体参考。${uploadedSubjectIdentityRule(item.label || `图${index + 1}`, item.subject_kind || "对象")}；只允许按用户明确要求调整动作/摆放、服装、表情、场景、构图与光影，禁止复制无关背景、文字、Logo或水印。`;
     }
     if (item.source === "兜兜IP") {
       return `${figure}为兜兜IP参考：用于保持兜兜的身份、袋身结构、眼睛、提手与腿脚特征，并参考符合场景的动作状态。`;
@@ -6035,14 +6049,14 @@ function buildCompactOneShotPrompt(request, design, selected = [], correction = 
   ].filter(Boolean).join("；");
   return [
     "生成一张高完成度商业 KV。",
-    ...compactReferenceLines(selected, 1),
+    ...finalKvReferenceLines(selected, 1),
     `用户画面描述：${compactValue(request.visual_description, 520)}`,
     ...compactDesignLines(design),
     textLine
       ? `只呈现以下文字：${textLine}；主标题层级最高，副标题和时间次之，禁止新增其他文字。`
       : "画面不包含任何标题、日期或其他文字。",
     selected.some((item) => item.source === "用户上传" && (item.role || item.type) === "主体")
-      ? "用户上传主体是对象身份唯一依据，必须保留原对象类别、结构、比例、材质和识别特征，禁止替换。"
+      ? "用户上传主体是身份事实来源；逐张保持其对应人物或产品的身份特征，禁止换脸、换产品、重新设计包装、混合多个参考主体，风格图只能影响摄影、色彩、材质和氛围。"
       : "",
     correction ? `返修：${compactValue(correction, 320)}` : "",
   ].filter(Boolean).join("\n");
