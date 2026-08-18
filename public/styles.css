@@ -861,12 +861,12 @@ button:disabled {
 }
 
 .mention-menu {
-  position: absolute;
-  z-index: 60;
-  left: 0;
-  top: calc(100% + 8px);
+  position: fixed;
+  z-index: 190;
+  left: 12px;
+  top: 12px;
   bottom: auto;
-  width: 300px;
+  width: 320px;
   max-height: min(380px, calc(100vh - 160px));
   padding: 10px;
   border: 0.5px solid var(--line);

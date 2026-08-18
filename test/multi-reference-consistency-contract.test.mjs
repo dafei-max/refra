@@ -16,9 +16,11 @@ test("home and canvas expose every uploaded reference through scrollable mention
   assert.match(app, /REFERENCE_UPLOAD_MAX_COUNT = 9/);
   assert.match(app, /label: `图\$\{nextReferenceNumber\+\+\}`/);
   assert.match(app, /选择参考图（\$\{matchingReferences\.length\}\/\$\{referenceFiles\.length\}）/);
+  assert.match(app, /document\.body\.appendChild\(mentionMenu\)/);
+  assert.match(app, /function positionMentionMenu\(\)/);
   assert.match(canvas, /composerMentionRange/);
   assert.match(canvas, /cf-composer-mention-menu/);
-  assert.match(styles, /\.mention-menu\s*\{[\s\S]*?max-height:[\s\S]*?overflow-y: auto;/);
+  assert.match(styles, /\.mention-menu\s*\{[\s\S]*?position: fixed;[\s\S]*?z-index: 190;[\s\S]*?overflow-y: auto;/);
   assert.match(styles, /\.cf-composer-mention-menu\s*\{[\s\S]*?overflow-y: auto;/);
 });
 

@@ -92,6 +92,7 @@ const imageSizeInput = document.querySelector("#imageSizeInput");
 const sizeText = document.querySelector("#sizeText");
 const sizeIcon = document.querySelector("#sizeIcon");
 const mentionMenu = document.querySelector("#mentionMenu");
+document.body.appendChild(mentionMenu);
 const referenceStrip = document.querySelector("#referenceStrip");
 const generationStory = document.querySelector("#generationStory");
 const storyTitle = document.querySelector("#storyTitle");
@@ -701,6 +702,31 @@ function mentionStartIndex() {
   return at;
 }
 
+function positionMentionMenu() {
+  if (mentionMenu.classList.contains("hidden")) return;
+  const anchor = visualDescriptionInput.getBoundingClientRect();
+  const viewportPadding = 12;
+  const gap = 8;
+  const width = Math.min(320, window.innerWidth - viewportPadding * 2);
+  const left = Math.max(viewportPadding, Math.min(anchor.left, window.innerWidth - width - viewportPadding));
+  const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - gap - viewportPadding);
+  const spaceAbove = Math.max(0, anchor.top - gap - viewportPadding);
+  const preferredHeight = Math.min(380, mentionMenu.scrollHeight || 380);
+  const openBelow = spaceBelow >= Math.min(preferredHeight, 180) || spaceBelow >= spaceAbove;
+  const availableHeight = Math.max(120, openBelow ? spaceBelow : spaceAbove);
+  const maxHeight = Math.min(380, availableHeight);
+  const top = openBelow
+    ? anchor.bottom + gap
+    : Math.max(viewportPadding, anchor.top - gap - Math.min(preferredHeight, maxHeight));
+
+  Object.assign(mentionMenu.style, {
+    width: `${width}px`,
+    left: `${left}px`,
+    top: `${top}px`,
+    maxHeight: `${maxHeight}px`,
+  });
+}
+
 function renderMentionMenu() {
   const start = mentionStartIndex();
   if (start < 0) {
@@ -725,6 +751,7 @@ function renderMentionMenu() {
   ];
   mentionMenu.innerHTML = `<div class="mention-title">选择参考图（${matchingReferences.length}/${referenceFiles.length}）</div>${options.length ? options.join("") : '<div class="mention-empty">没有匹配的参考图</div>'}`;
   mentionMenu.classList.remove("hidden");
+  positionMentionMenu();
   mentionMenu.querySelectorAll("[data-mention-value]").forEach((button) => {
     button.addEventListener("click", () => {
       const cursor = visualDescriptionInput.selectionStart;
@@ -2173,6 +2200,9 @@ document.addEventListener("click", (event) => {
   if (!mentionMenu.contains(event.target) && event.target !== visualDescriptionInput) mentionMenu.classList.add("hidden");
   if (!sizePopover.contains(event.target) && !sizePickerButton.contains(event.target)) sizePopover.classList.add("hidden");
 });
+
+window.addEventListener("resize", positionMentionMenu);
+window.addEventListener("scroll", positionMentionMenu, true);
 
 stylePresetSection.addEventListener("click", (event) => {
   if (event.target === stylePresetSection) closeStylePresetModal();
