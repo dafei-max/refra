@@ -2,10 +2,40 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 let pngPromise;
+let wasmRendererPromise;
+let titleFontPromise;
 
 async function pngCodec() {
   if (!pngPromise) pngPromise = import("pngjs").then((module) => module.PNG || module.default?.PNG);
   return pngPromise;
+}
+
+async function wasmRenderer() {
+  if (!wasmRendererPromise) {
+    wasmRendererPromise = Promise.all([
+      import("@resvg/resvg-wasm"),
+      readFile(new URL("../node_modules/@resvg/resvg-wasm/index_bg.wasm", import.meta.url)),
+    ]).then(async ([renderer, wasmBytes]) => {
+      await renderer.initWasm(wasmBytes);
+      return renderer;
+    }).catch((error) => {
+      wasmRendererPromise = null;
+      throw error;
+    });
+  }
+  return wasmRendererPromise;
+}
+
+async function titleFont(fontPath) {
+  if (!fontPath) throw new Error("缺少搜索框标题字体");
+  if (!titleFontPromise) {
+    titleFontPromise = readFile(fontPath)
+      .catch((error) => {
+        titleFontPromise = null;
+        throw error;
+      });
+  }
+  return titleFontPromise;
 }
 
 function clamp(value, minimum, maximum) {
@@ -97,6 +127,75 @@ function compositeOver(base, layer, left, top) {
   }
 }
 
+function titleWidthUnits(title) {
+  return Array.from(title).reduce((total, character) => {
+    if (/\s/.test(character)) return total + 0.35;
+    if (/^[\x00-\x7F]$/.test(character)) return total + 0.62;
+    return total + 1;
+  }, 0);
+}
+
+function fitTitle(title, maximumWidth, maximumSize, minimumSize) {
+  const units = Math.max(1, titleWidthUnits(title));
+  const fontSize = Math.max(minimumSize, Math.min(maximumSize, Math.floor(maximumWidth / units)));
+  if (units * fontSize <= maximumWidth) return { text: title, fontSize };
+  const characters = Array.from(title);
+  while (characters.length > 1 && titleWidthUnits(`${characters.join("")}…`) * minimumSize > maximumWidth) {
+    characters.pop();
+  }
+  return { text: `${characters.join("")}…`, fontSize: minimumSize };
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+async function drawSearchTitle(layer, title, fontPath) {
+  const normalizedTitle = String(title || "").replace(/\s+/g, " ").trim();
+  if (!normalizedTitle) return null;
+  const [fontBytes, renderer] = await Promise.all([titleFont(fontPath), wasmRenderer()]);
+  const fieldLeft = Math.round(layer.width * 0.335);
+  const fieldRight = Math.round(layer.width * 0.916);
+  const fieldTop = Math.round(layer.height * 0.642);
+  const fieldBottom = Math.round(layer.height * 0.946);
+  const maximumWidth = Math.max(1, fieldRight - fieldLeft - Math.round(layer.width * 0.035));
+  const maximumSize = Math.max(10, Math.round(layer.width * 0.052));
+  const minimumSize = Math.max(8, Math.round(layer.width * 0.032));
+  const fitted = fitTitle(normalizedTitle, maximumWidth, maximumSize, minimumSize);
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${layer.width}" height="${layer.height}">`,
+    `<text x="${(fieldLeft + fieldRight) / 2}" y="${(fieldTop + fieldBottom) / 2}"`,
+    ` text-anchor="middle" dominant-baseline="central" fill="#121212"`,
+    ` font-family="Douyin Sans" font-size="${fitted.fontSize}" font-weight="700">`,
+    `${escapeXml(fitted.text)}</text></svg>`,
+  ].join("");
+  const resvg = new renderer.Resvg(svg, {
+    font: {
+      fontBuffers: [fontBytes],
+      defaultFontFamily: "Douyin Sans",
+      sansSerifFamily: "Douyin Sans",
+    },
+    textRendering: 2,
+  });
+  const rendered = resvg.render();
+  try {
+    compositeOver(layer, {
+      width: rendered.width,
+      height: rendered.height,
+      data: Buffer.from(rendered.pixels),
+    }, 0, 0);
+  } finally {
+    rendered.free();
+    resvg.free();
+  }
+  return fitted;
+}
+
 async function resizedLayer(assetPath, width, label) {
   return resizeRgba(await decodePng(await readFile(assetPath), label), width);
 }
@@ -136,8 +235,19 @@ export async function applyBrandOverlays(filePath, options = {}) {
     const layer = assetPath === options.searchLightPath
       ? lightLayer
       : await resizedLayer(assetPath, width, "深色背景搜索框素材");
+    const renderedTitle = await drawSearchTitle(layer, options.campaignName, options.fontPath);
     compositeOver(base, layer, left, top);
-    search = { path: assetPath, name: path.basename(assetPath), luminance, left, top, width, height: layer.height };
+    search = {
+      path: assetPath,
+      name: path.basename(assetPath),
+      luminance,
+      left,
+      top,
+      width,
+      height: layer.height,
+      title: renderedTitle?.text || "",
+      titleFontSize: renderedTitle?.fontSize || 0,
+    };
   }
 
   const PNG = await pngCodec();

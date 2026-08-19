@@ -36,6 +36,8 @@ test("brand overlays are composited in Node without a Python runtime", async () 
       searchWidth: 295,
       searchRight: 44,
       searchBottom: 22,
+      campaignName: "夏日新品首发",
+      fontPath: path.join(root, "font", "DouyinSansBold.otf"),
     });
     const after = await readFile(output);
     const rendered = PNG.sync.read(after);
@@ -46,12 +48,28 @@ test("brand overlays are composited in Node without a Python runtime", async () 
     assert.equal(result.search?.name, "search_light.png");
     assert.ok(result.logo.luminance >= 150);
     assert.ok(result.search.luminance >= 150);
+    assert.equal(result.search.title, "夏日新品首发");
+    assert.ok(result.search.titleFontSize > 0);
+    let titlePixels = 0;
+    const titleLeft = result.search.left + Math.round(result.search.width * 0.335);
+    const titleRight = result.search.left + Math.round(result.search.width * 0.916);
+    const titleTop = result.search.top + Math.round(result.search.height * 0.642);
+    const titleBottom = result.search.top + Math.round(result.search.height * 0.946);
+    for (let y = titleTop; y < titleBottom; y += 1) {
+      for (let x = titleLeft; x < titleRight; x += 1) {
+        const offset = (y * rendered.width + x) * 4;
+        if (rendered.data[offset] < 80 && rendered.data[offset + 1] < 80 && rendered.data[offset + 2] < 80) {
+          titlePixels += 1;
+        }
+      }
+    }
+    assert.ok(titlePixels > 100, `expected rendered title pixels, received ${titlePixels}`);
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
 });
 
-test("production bundle uses the lazy pure-JavaScript overlay engine", async () => {
+test("production bundle uses the lazy serverless overlay engine", async () => {
   const [server, service, vercel] = await Promise.all([
     readFile(path.join(root, "server.mjs"), "utf-8"),
     readFile(path.join(root, "services", "brand-overlay.mjs"), "utf-8"),
@@ -60,11 +78,16 @@ test("production bundle uses the lazy pure-JavaScript overlay engine", async () 
   assert.match(server, /import \{ applyBrandOverlays \}/);
   assert.doesNotMatch(server, /apply_logo\.py/);
   assert.doesNotMatch(server, /codex-runtimes/);
-  assert.match(server, /brand_overlay_engine: "pngjs"/);
+  assert.match(server, /brand_overlay_engine: "pngjs\+resvg-wasm"/);
   assert.match(server, /brand_overlay_loading: "lazy"/);
   assert.match(server, /brand_overlay_python_required: false/);
   assert.doesNotMatch(service, /sharp/);
   assert.match(service, /import\("pngjs"\)/);
-  assert.doesNotMatch(vercel, /font\/\*\*/);
+  assert.match(service, /import\("@resvg\/resvg-wasm"\)/);
+  assert.doesNotMatch(service, /pureimage/);
+  assert.match(vercel, /font\/\*\*/);
+  assert.match(vercel, /@resvg\/resvg-wasm\/index_bg\.wasm/);
   assert.match(server, /url\.pathname === "\/api\/health\/brand-overlay"/);
+  assert.match(server, /collectAssetKeys\(asset\)\.includes\(element\.object_key\)/);
+  assert.match(server, /sourceAsset\?\.title/);
 });

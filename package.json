@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@resvg/resvg-wasm": "^2.6.2",
     "ali-oss": "^6.23.0",
     "pngjs": "^7.0.0"
   },

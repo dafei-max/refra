@@ -106,6 +106,7 @@ const SEARCH_DARK_BG_PATH = path.join(IMAGE_DIR, "search_dark.png");
 const SEARCH_WIDTH = 295;
 const SEARCH_RIGHT = 44;
 const SEARCH_BOTTOM = 22;
+const BRAND_TITLE_FONT_PATH = path.join(__dirname, "font", "DouyinSansBold.otf");
 const MATERIAL_LIBRARY_VERSION = 2;
 const PACKAGED_MATERIALS_PATH = path.join(__dirname, "data", "materials.json");
 const MATERIALS_PATH = IS_VERCEL
@@ -2522,7 +2523,7 @@ async function projectImageElement(projectId, { elementId = "", objectKey = "" }
 }
 
 async function createBrandOverlayAsset({ projectId, elementId, objectKey, campaignName }) {
-  const { element } = await brandOverlayStage(
+  const { project, element } = await brandOverlayStage(
     "校验画布图片",
     () => projectImageElement(projectId, { elementId, objectKey }),
     "项目中没有找到这张图片，请刷新画布后重试",
@@ -2530,6 +2531,10 @@ async function createBrandOverlayAsset({ projectId, elementId, objectKey, campai
   const filename = `kv-brand-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.png`;
   const key = outputKey(filename);
   const workPath = path.join(RUNTIME_ROOT, "tmp", filename);
+  const sourceAsset = (await loadAssetsIndex()).find((asset) => collectAssetKeys(asset).includes(element.object_key));
+  const resolvedCampaignName = textOf(sourceAsset?.title).trim()
+    || textOf(campaignName).trim()
+    || textOf(project.title).trim();
   await mkdir(path.dirname(workPath), { recursive: true });
   try {
     const source = await brandOverlayStage(
@@ -2543,7 +2548,7 @@ async function createBrandOverlayAsset({ projectId, elementId, objectKey, campai
       () => applyLogoOverlay(workPath, {
         include_logo: true,
         include_search_overlay: true,
-        campaign_name: textOf(campaignName).trim(),
+        campaign_name: resolvedCampaignName,
       }),
     );
     const output = await readFile(workPath);
@@ -2564,7 +2569,7 @@ async function createBrandOverlayAsset({ projectId, elementId, objectKey, campai
     const result = {
       request: {
         project_id: textOf(projectId).trim(),
-        campaign_name: textOf(campaignName).trim(),
+        campaign_name: resolvedCampaignName,
         visual_description: "基于选中图片叠加抖音商城 Logo 与右下角搜索框",
         uploaded_references: [element.object_key],
       },
@@ -3207,6 +3212,8 @@ async function applyLogoOverlay(filePath, request = {}) {
     searchWidth: SEARCH_WIDTH,
     searchRight: SEARCH_RIGHT,
     searchBottom: SEARCH_BOTTOM,
+    campaignName: textOf(request.campaign_name).trim(),
+    fontPath: BRAND_TITLE_FONT_PATH,
   });
   return {
     logo_overlay: result.logo
@@ -3229,6 +3236,8 @@ async function applyLogoOverlay(filePath, request = {}) {
           right: SEARCH_RIGHT,
           bottom: SEARCH_BOTTOM,
           width: result.search.width,
+          title: result.search.title,
+          title_font_size: result.search.titleFontSize,
         }
       : null,
   };
@@ -3253,17 +3262,19 @@ async function runBrandOverlaySmoke() {
     const overlays = await applyLogoOverlay(workPath, {
       include_logo: true,
       include_search_overlay: true,
+      campaign_name: "夏日新品首发",
     });
     const output = await readFile(workPath);
     if (detectImageType(output) !== "image/png") throw new Error("输出不是有效的 PNG 图片");
     return {
       ok: true,
-      engine: "pngjs",
+      engine: "pngjs+resvg-wasm",
       python_required: false,
       duration_ms: Date.now() - startedAt,
       output_bytes: output.length,
       logo_variant: overlays.logo_overlay?.variant || "",
       search_variant: overlays.search_overlay?.variant || "",
+      search_title: overlays.search_overlay?.title || "",
     };
   } finally {
     await unlink(workPath).catch(() => {});
@@ -6907,7 +6918,7 @@ const server = createServer(async (req, res) => {
         has_api_key: Boolean(OPENAI_API_KEY),
         models: { text: TEXT_MODEL, image: IMAGE_MODEL },
         capabilities: {
-          brand_overlay_engine: "pngjs",
+          brand_overlay_engine: "pngjs+resvg-wasm",
           brand_overlay_loading: "lazy",
           brand_overlay_python_required: false,
         },
