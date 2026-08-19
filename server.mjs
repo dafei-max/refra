@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { searchDesignInspiration } from "./services/inspiration/index.mjs";
 import { getInspirationImage, ImageProxyError } from "./services/inspiration/image-proxy.mjs";
+import { applyBrandOverlays } from "./services/brand-overlay.mjs";
 import {
   MAX_IMAGE_BYTES,
   detectImageType,
@@ -114,7 +115,7 @@ const PACKAGED_CUSTOM_STYLES_PATH = path.join(__dirname, "data", "style-presets.
 const CUSTOM_STYLES_PATH = IS_VERCEL
   ? path.join(RUNTIME_ROOT, "data", "style-presets.json")
   : PACKAGED_CUSTOM_STYLES_PATH;
-const PYTHON_BIN = process.env.PYTHON_BIN || "/Users/bytedance/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3";
+const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
 const AUTO_ART_DIRECTOR_RETRY = modeFlag("AUTO_ART_DIRECTOR_RETRY");
 const ART_DIRECTOR_RETRY_LIMIT = 1;
 const INTEGRATED_LAYOUT_DECORATION_STRUCTURE_RULE = "装饰结构采用闭集继承：先逐项观察参考图中真实存在的引号、括号、下划线、框线、标签底形、角标、色块、分隔线和装饰符号；只允许复现参考图实际存在的类型，并严格继承其数量、大小关系、相对位置和视觉样式。参考图中不存在的结构一律禁止新增，尤其不得为了强调文字自行添加下划线、引号、括号、边框、标签、角标、强调线或其他装饰笔画";
@@ -3161,79 +3162,57 @@ function runPythonImport(filePath) {
   });
 }
 
-function applyLogoOverlay(filePath, request = {}) {
+async function applyLogoOverlay(filePath, request = {}) {
   const includeLogo = request.include_logo !== false;
   const includeSearch = request.include_search_overlay !== false;
   if (!includeLogo && !includeSearch) {
-    return Promise.resolve({ logo_overlay: null, search_overlay: null });
+    return { logo_overlay: null, search_overlay: null };
   }
   if (includeLogo && !existsSync(LOGO_DARK_BG_PATH)) {
-    return Promise.resolve({ logo_overlay: null, search_overlay: null });
+    return { logo_overlay: null, search_overlay: null };
   }
-  return new Promise((resolve, reject) => {
-    const lightLogoPath = existsSync(LOGO_LIGHT_BG_PATH) ? LOGO_LIGHT_BG_PATH : LOGO_DARK_BG_PATH;
-    const hasSearchAssets = existsSync(SEARCH_LIGHT_BG_PATH) && existsSync(SEARCH_DARK_BG_PATH);
-    const child = spawn(
-      PYTHON_BIN,
-      [
-        path.join(__dirname, "tools", "apply_logo.py"),
-        filePath,
-        LOGO_DARK_BG_PATH,
-        lightLogoPath,
-        String(LOGO_LEFT),
-        String(LOGO_TOP),
-        String(LOGO_WIDTH),
-        ...(hasSearchAssets
-          ? [
-              SEARCH_LIGHT_BG_PATH,
-              SEARCH_DARK_BG_PATH,
-              String(SEARCH_WIDTH),
-              String(SEARCH_RIGHT),
-              String(SEARCH_BOTTOM),
-              textOf(request.campaign_name).trim(),
-            ]
-          : []),
-        String(includeLogo),
-        String(includeSearch && hasSearchAssets),
-      ],
-      { cwd: __dirname },
-    );
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => (stdout += chunk));
-    child.stderr.on("data", (chunk) => (stderr += chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr || `logo 叠加失败：${code}`));
-        return;
-      }
-      const [logoName, luminanceText, searchName, searchLuminanceText] = stdout.trim().split(/\t/);
-      const isLightBg = logoName === path.basename(lightLogoPath) && lightLogoPath !== LOGO_DARK_BG_PATH;
-      resolve({
-        logo_overlay: logoName && logoName !== "-"
-          ? {
-              variant: isLightBg ? "light-bg" : "dark-bg",
-              url: isLightBg ? "/image/Group%202147242265.png" : "/image/Group.png",
-              luminance: Number(luminanceText) || null,
-              left: LOGO_LEFT,
-              top: LOGO_TOP,
-              width: LOGO_WIDTH,
-            }
-          : null,
-        search_overlay: searchName && searchName !== "-"
-          ? {
-              variant: searchName === path.basename(SEARCH_LIGHT_BG_PATH) ? "light-bg" : "dark-bg",
-              url: searchName === path.basename(SEARCH_LIGHT_BG_PATH) ? "/image/search_light.png" : "/image/search_dark.png",
-              luminance: Number(searchLuminanceText) || null,
-              right: SEARCH_RIGHT,
-              bottom: SEARCH_BOTTOM,
-              width: SEARCH_WIDTH,
-            }
-          : null,
-      });
-    });
+  const lightLogoPath = existsSync(LOGO_LIGHT_BG_PATH) ? LOGO_LIGHT_BG_PATH : LOGO_DARK_BG_PATH;
+  const hasSearchAssets = existsSync(SEARCH_LIGHT_BG_PATH) && existsSync(SEARCH_DARK_BG_PATH);
+  const result = await applyBrandOverlays(filePath, {
+    includeLogo,
+    includeSearch: includeSearch && hasSearchAssets,
+    darkLogoPath: LOGO_DARK_BG_PATH,
+    lightLogoPath,
+    logoLeft: LOGO_LEFT,
+    logoTop: LOGO_TOP,
+    logoWidth: LOGO_WIDTH,
+    searchLightPath: SEARCH_LIGHT_BG_PATH,
+    searchDarkPath: SEARCH_DARK_BG_PATH,
+    searchWidth: SEARCH_WIDTH,
+    searchRight: SEARCH_RIGHT,
+    searchBottom: SEARCH_BOTTOM,
+    campaignName: textOf(request.campaign_name).trim(),
+    fontPath: path.join(__dirname, "font", "DouyinSansBold.otf"),
   });
+  return {
+    logo_overlay: result.logo
+      ? {
+          variant: result.logo.path === lightLogoPath && lightLogoPath !== LOGO_DARK_BG_PATH ? "light-bg" : "dark-bg",
+          url: result.logo.path === lightLogoPath && lightLogoPath !== LOGO_DARK_BG_PATH
+            ? "/image/Group%202147242265.png"
+            : "/image/Group.png",
+          luminance: result.logo.luminance,
+          left: result.logo.left,
+          top: result.logo.top,
+          width: result.logo.width,
+        }
+      : null,
+    search_overlay: result.search
+      ? {
+          variant: result.search.path === SEARCH_LIGHT_BG_PATH ? "light-bg" : "dark-bg",
+          url: result.search.path === SEARCH_LIGHT_BG_PATH ? "/image/search_light.png" : "/image/search_dark.png",
+          luminance: result.search.luminance,
+          right: SEARCH_RIGHT,
+          bottom: SEARCH_BOTTOM,
+          width: result.search.width,
+        }
+      : null,
+  };
 }
 
 function parseResponseText(payload) {
@@ -6866,6 +6845,7 @@ const server = createServer(async (req, res) => {
         ok: true,
         has_api_key: Boolean(OPENAI_API_KEY),
         models: { text: TEXT_MODEL, image: IMAGE_MODEL },
+        capabilities: { brand_overlay_engine: "sharp", brand_overlay_python_required: false },
         pipeline: {
           mode: PIPELINE_MODE,
           target_ms: 180000,
