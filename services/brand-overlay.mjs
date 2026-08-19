@@ -1,6 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
+
+let sharpPromise;
+
+async function sharpEngine() {
+  if (!sharpPromise) sharpPromise = import("sharp").then((module) => module.default);
+  return sharpPromise;
+}
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -38,12 +44,14 @@ async function embeddedFont(fontPath) {
 
 async function averageLuminance(image, { left, top, width, height }) {
   if (width <= 0 || height <= 0) return 0;
+  const sharp = await sharpEngine();
   const { channels } = await sharp(image).extract({ left, top, width, height }).stats();
   const [red = {}, green = {}, blue = {}] = channels;
   return 0.2126 * Number(red.mean || 0) + 0.7152 * Number(green.mean || 0) + 0.0722 * Number(blue.mean || 0);
 }
 
 async function resizedLayer(assetPath, width) {
+  const sharp = await sharpEngine();
   return sharp(await readFile(assetPath))
     .resize({ width, kernel: sharp.kernel.lanczos3 })
     .ensureAlpha()
@@ -68,6 +76,7 @@ async function addSearchTitle(layer, title, fontPath) {
     escapeMarkup(fitted.text),
     "</text></svg>",
   ].join(""));
+  const sharp = await sharpEngine();
   return sharp(layer.data)
     .composite([{
       input: textSvg,
@@ -83,6 +92,7 @@ export async function applyBrandOverlays(filePath, options = {}) {
   const includeSearch = options.includeSearch !== false;
   if (!includeLogo && !includeSearch) return { logo: null, search: null };
 
+  const sharp = await sharpEngine();
   const normalized = await sharp(await readFile(filePath))
     .rotate()
     .ensureAlpha()

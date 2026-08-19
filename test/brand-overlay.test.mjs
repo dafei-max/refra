@@ -49,14 +49,18 @@ test("brand overlays are composited in Node without a Python runtime", async () 
 });
 
 test("production bundle includes the font and server no longer spawns apply_logo.py", async () => {
-  const [server, vercel] = await Promise.all([
+  const [server, service, vercel] = await Promise.all([
     readFile(path.join(root, "server.mjs"), "utf-8"),
+    readFile(path.join(root, "services", "brand-overlay.mjs"), "utf-8"),
     readFile(path.join(root, "vercel.json"), "utf-8"),
   ]);
   assert.match(server, /import \{ applyBrandOverlays \}/);
   assert.doesNotMatch(server, /apply_logo\.py/);
   assert.doesNotMatch(server, /codex-runtimes/);
   assert.match(server, /brand_overlay_engine: "sharp"/);
+  assert.match(server, /brand_overlay_loading: "lazy"/);
   assert.match(server, /brand_overlay_python_required: false/);
+  assert.doesNotMatch(service, /^import sharp/m);
+  assert.match(service, /import\("sharp"\)/);
   assert.match(vercel, /font\/\*\*/);
 });

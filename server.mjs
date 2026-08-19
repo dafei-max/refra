@@ -6845,7 +6845,11 @@ const server = createServer(async (req, res) => {
         ok: true,
         has_api_key: Boolean(OPENAI_API_KEY),
         models: { text: TEXT_MODEL, image: IMAGE_MODEL },
-        capabilities: { brand_overlay_engine: "sharp", brand_overlay_python_required: false },
+        capabilities: {
+          brand_overlay_engine: "sharp",
+          brand_overlay_loading: "lazy",
+          brand_overlay_python_required: false,
+        },
         pipeline: {
           mode: PIPELINE_MODE,
           target_ms: 180000,
