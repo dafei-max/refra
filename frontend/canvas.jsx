@@ -6,9 +6,6 @@ import {
   MiniMap,
   useReactFlow,
   useNodesState,
-  useEdgesState,
-  Handle,
-  Position,
 } from "@xyflow/react";
 
 function adminToken() {
@@ -37,10 +34,14 @@ function composerMentionRange(value, cursor) {
   return { start, end: cursor, query: query.trim().toLowerCase() };
 }
 
+function canvasAspectRatio(value = "3:4") {
+  const [width, height] = String(value).split(":").map(Number);
+  return width > 0 && height > 0 ? `${width} / ${height}` : "3 / 4";
+}
+
 function ImageNode({ data, selected }) {
   const [splitting, setSplitting] = useState(false);
-  const logoEnabled = Boolean(data.includeLogo);
-  const searchEnabled = Boolean(data.includeSearch);
+  const [branding, setBranding] = useState(false);
   const download = () => {
     const link = document.createElement("a");
     link.href = data.url;
@@ -50,9 +51,7 @@ function ImageNode({ data, selected }) {
 
   return (
     <div className={`cf-node${selected ? " selected" : ""}`}>
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <img src={data.url} alt={data.name || ""} />
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
       {selected && (
         <div className="cf-node-toolbar">
           <button type="button" onClick={(event) => { event.stopPropagation(); window.open(data.url, "_blank"); }}>
@@ -77,25 +76,15 @@ function ImageNode({ data, selected }) {
           <span className="cf-tb-divider" />
           <button
             type="button"
-            className={logoEnabled ? "active" : ""}
-            aria-pressed={logoEnabled}
-            onClick={(event) => {
+            disabled={branding}
+            onClick={async (event) => {
               event.stopPropagation();
-              window.__canvasTool?.("logo");
+              if (branding) return;
+              setBranding(true);
+              try { await data.onBrand?.(data); } finally { setBranding(false); }
             }}
           >
-            左上角 Logo
-          </button>
-          <button
-            type="button"
-            className={searchEnabled ? "active" : ""}
-            aria-pressed={searchEnabled}
-            onClick={(event) => {
-              event.stopPropagation();
-              window.__canvasTool?.("search");
-            }}
-          >
-            右下角搜索框
+            {branding ? "处理中" : "抖音商城logo"}
           </button>
         </div>
       )}
@@ -103,7 +92,16 @@ function ImageNode({ data, selected }) {
   );
 }
 
-const nodeTypes = { image: ImageNode };
+function LoadingNode({ data }) {
+  return (
+    <div className="cf-generation-loading" style={{ width: data.width || 260 }}>
+      <div className="cf-generation-loading-label">{data.label || "图片正在生成中......"}</div>
+      <div className="cf-generation-loading-card" style={{ aspectRatio: data.aspectRatio || "3 / 4" }} />
+    </div>
+  );
+}
+
+const nodeTypes = { image: ImageNode, loading: LoadingNode };
 
 function CanvasControls({ showMini, onToggleMini }) {
   const { zoomIn, zoomOut } = useReactFlow();
@@ -122,8 +120,7 @@ function CanvasControls({ showMini, onToggleMini }) {
 let rowCounter = 0;
 
 function CanvasApp() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, applyNodesChange] = useNodesState([]);
   const [messages, setMessages] = useState([]);
   const [chatWidth, setChatWidth] = useState(399);
   const [chatCollapsed, setChatCollapsed] = useState(false);
@@ -140,16 +137,62 @@ function CanvasApp() {
   const [composerExpanding, setComposerExpanding] = useState(false);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
   const [composerMention, setComposerMention] = useState(null);
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [loadingNode, setLoadingNode] = useState(null);
 
   const messagesRef = useRef([]);
   const lastTypoRef = useRef(null);
   const splitLocksRef = useRef(new Set());
+  const brandLocksRef = useRef(new Set());
   const chatPanelRef = useRef(null);
   const chatInputRef = useRef(null);
   const nodesRef = useRef([]);
-  const edgesRef = useRef([]);
   const viewportRef = useRef({ x: 0, y: 0, zoom: 1 });
   const hydratingRef = useRef(false);
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+
+  const nodeSnapshot = useCallback((list) => list.map((node) => ({
+    ...node,
+    position: { ...node.position },
+    data: { ...node.data },
+  })), []);
+
+  const snapshotKey = useCallback((list) => JSON.stringify(list.map((node) => ({
+    id: node.id,
+    x: Math.round(node.position.x),
+    y: Math.round(node.position.y),
+    objectKey: node.data?.objectKey || "",
+  }))), []);
+
+  const pushHistory = useCallback((snapshot = nodesRef.current) => {
+    const next = nodeSnapshot(snapshot);
+    const previous = undoStackRef.current.at(-1);
+    if (previous && snapshotKey(previous) === snapshotKey(next)) return;
+    undoStackRef.current = [...undoStackRef.current.slice(-49), next];
+    redoStackRef.current = [];
+  }, [nodeSnapshot, snapshotKey]);
+
+  const undo = useCallback(() => {
+    const previous = undoStackRef.current.pop();
+    if (!previous) return;
+    redoStackRef.current.push(nodeSnapshot(nodesRef.current));
+    setNodes(nodeSnapshot(previous));
+    setSelectedNodeId("");
+  }, [nodeSnapshot, setNodes]);
+
+  const redo = useCallback(() => {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    undoStackRef.current.push(nodeSnapshot(nodesRef.current));
+    setNodes(nodeSnapshot(next));
+    setSelectedNodeId("");
+  }, [nodeSnapshot, setNodes]);
+
+  const onNodesChange = useCallback((changes) => {
+    if (changes.some((change) => change.type === "remove")) pushHistory();
+    applyNodesChange(changes);
+  }, [applyNodesChange, pushHistory]);
 
   const appendMessage = useCallback((role, content, extra = {}) => {
     const msg = { id: `${Date.now()}-${Math.random()}`, role, content, created_at: new Date().toISOString(), ...extra };
@@ -169,37 +212,36 @@ function CanvasApp() {
     setMessages(list);
   }, []);
 
-  const addImageNode = useCallback((kind, url, name, objectKey) => {
+  const addImageNode = useCallback((kind, url, name, objectKey, placement = null) => {
     const isTypography = kind === "typography";
     const row = isTypography ? rowCounter++ : Math.max(0, rowCounter - 1);
     const id = `${kind}-${row}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
     const labels = { typography: "第一步版式图", kv: "完整 KV", title: "标题图层", background: "背景图层" };
     const xByKind = { typography: 80, kv: 420, title: 760, background: 1100 };
-    const overlaySettings = window.__getCanvasSettings?.() || {};
     const node = {
       id,
       type: "image",
-      position: { x: xByKind[kind] ?? 420, y: 110 + row * 340 },
+      position: placement || { x: xByKind[kind] ?? 420, y: 110 + row * 340 },
       data: {
+        nodeId: id,
         kind,
         url,
         name,
         objectKey: objectKey || (name ? `outputs/${name}` : ""),
         label: labels[kind] || "完整 KV",
-        includeLogo: Boolean(overlaySettings.include_logo),
-        includeSearch: Boolean(overlaySettings.include_search_overlay),
         onSplit: (data) => splitHandlerRef.current(data),
+        onBrand: (data) => brandHandlerRef.current(data),
       },
     };
+    pushHistory();
     setNodes((current) => [...current, node]);
     if (isTypography) {
       lastTypoRef.current = id;
-    } else if (kind === "kv" && lastTypoRef.current) {
-      setEdges((current) => [...current, { id: `edge-${lastTypoRef.current}-${id}`, source: lastTypoRef.current, target: id }]);
     }
-  }, [setNodes, setEdges]);
+    return node;
+  }, [pushHistory, setNodes]);
 
-  const parseSse = useCallback(async (response) => {
+  const parseSse = useCallback(async (response, context = {}) => {
     requireInvite(response);
     if (!response.ok || !response.body) {
       const payload = await response.json().catch(() => ({}));
@@ -230,7 +272,7 @@ function CanvasApp() {
           if (layer && !layer.skipped) addImageNode("typography", layer.url, layer.name, layer.object_key);
         } else if (event === "scene") {
           const layer = payload.scene_layer;
-          if (layer && !layer.skipped) addImageNode("kv", layer.url, layer.name, layer.object_key);
+          if (layer && !layer.skipped) addImageNode("kv", layer.url, layer.name, layer.object_key, context.outputPosition || null);
         } else if (event === "image") {
           const image = payload.image_result;
           if (image && !image.skipped && image.url) {
@@ -246,11 +288,35 @@ function CanvasApp() {
     throw new Error("链路中断：服务端未返回完成事件");
   }, [addImageNode, appendMessage, updateStatusMessage]);
 
-  const runGeneration = useCallback(async (payload, files = []) => {
+  const runGeneration = useCallback(async (payload, files = [], options = {}) => {
     if (generating || !session?.projectId) return;
     const text = String(payload.visual_description || "").trim();
     if (!text) return;
+    const baseNode = options.baseNode || null;
+    if (baseNode && !baseNode.data?.objectKey) {
+      updateStatusMessage("当前选中图片尚未保存，暂时不能继续编辑");
+      return;
+    }
+    const conversationHistory = messagesRef.current
+      .filter((message) => message.kind !== "status" && String(message.content || "").trim())
+      .slice(-12)
+      .map(({ role, content }) => ({ role, content }));
+    const outputPosition = baseNode
+      ? { x: baseNode.position.x + 340, y: baseNode.position.y }
+      : { x: 80, y: 110 };
     setGenerating(true);
+    setLoadingNode({
+      id: `loading-${Date.now()}`,
+      type: "loading",
+      position: outputPosition,
+      selectable: false,
+      draggable: false,
+      deletable: false,
+      data: {
+        label: baseNode ? "正在基于选中图片编辑......" : "图片正在生成中......",
+        aspectRatio: canvasAspectRatio(payload.image_size || composerSettings.image_size || "3:4"),
+      },
+    });
     appendMessage("user", text);
     fetch(`/api/projects/${encodeURIComponent(session.projectId)}/messages`, {
       method: "POST",
@@ -274,6 +340,9 @@ function CanvasApp() {
         include_logo: merged.include_logo ? "true" : "false",
         include_search_overlay: merged.include_search_overlay ? "true" : "false",
         project_id: session.projectId,
+        edit_mode: baseNode ? "true" : "false",
+        base_image_object_key: baseNode?.data?.objectKey || "",
+        conversation_history: JSON.stringify(conversationHistory),
       };
       for (const [key, value] of Object.entries(fields)) body.append(key, String(value));
       const referenceFiles = files.length ? files : (typeof window.__getReferenceFiles === "function" ? window.__getReferenceFiles() : []);
@@ -283,14 +352,15 @@ function CanvasApp() {
       body.append("reference_labels", JSON.stringify(referenceLabels));
       referenceFiles.forEach((file, index) => body.append(`reference_image_${index}`, file, file.name));
       const response = await fetch("/api/run-stream", { method: "POST", headers: authHeaders(), body });
-      await parseSse(response);
+      await parseSse(response, { outputPosition: baseNode ? outputPosition : null });
       updateStatusMessage("生成完成");
     } catch (error) {
       updateStatusMessage(`生成失败：${error.message}`);
     } finally {
+      setLoadingNode(null);
       setGenerating(false);
     }
-  }, [generating, session, parseSse, appendMessage, updateStatusMessage]);
+  }, [generating, session, composerSettings.image_size, parseSse, appendMessage, updateStatusMessage]);
 
   const handleSplit = useCallback(async (data) => {
     const lockKey = data.objectKey || data.name;
@@ -326,6 +396,59 @@ function CanvasApp() {
   const splitHandlerRef = useRef(handleSplit);
   splitHandlerRef.current = handleSplit;
 
+  const handleBrandOverlay = useCallback(async (data) => {
+    const lockKey = data.objectKey || data.name;
+    if (generating || !lockKey || brandLocksRef.current.has(lockKey) || !session?.projectId) return;
+    const sourceNode = nodesRef.current.find((node) => node.id === data.nodeId || node.data?.objectKey === data.objectKey);
+    const outputPosition = sourceNode
+      ? { x: sourceNode.position.x + 340, y: sourceNode.position.y }
+      : { x: 420, y: 110 };
+    brandLocksRef.current.add(lockKey);
+    setGenerating(true);
+    setLoadingNode({
+      id: `loading-brand-${Date.now()}`,
+      type: "loading",
+      position: outputPosition,
+      selectable: false,
+      draggable: false,
+      deletable: false,
+      data: { label: "正在添加抖音商城 Logo......", aspectRatio: canvasAspectRatio(composerSettings.image_size) },
+    });
+    appendMessage("user", "为选中图片添加抖音商城 Logo 和右下角搜索框");
+    updateStatusMessage("正在叠加抖音商城 Logo 与搜索框...");
+    try {
+      const response = await fetch("/api/assets/brand-overlay", {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          project_id: session.projectId,
+          element_id: data.nodeId || "",
+          object_key: data.objectKey || "",
+          campaign_name: title || "",
+        }),
+      });
+      requireInvite(response);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Logo 叠加失败");
+      addImageNode("kv", payload.url, payload.name, payload.object_key, outputPosition);
+      appendMessage("assistant", "已基于选中图片添加抖音商城 Logo 与搜索框。", {
+        image: payload.url,
+        imageObjectKey: payload.object_key || "",
+        imageName: payload.name,
+      });
+      updateStatusMessage("Logo 与搜索框添加完成");
+    } catch (error) {
+      updateStatusMessage(`Logo 叠加失败：${error.message}`);
+    } finally {
+      setLoadingNode(null);
+      setGenerating(false);
+      brandLocksRef.current.delete(lockKey);
+    }
+  }, [generating, session, title, composerSettings.image_size, addImageNode, appendMessage, updateStatusMessage]);
+
+  const brandHandlerRef = useRef(handleBrandOverlay);
+  brandHandlerRef.current = handleBrandOverlay;
+
   const saveCanvas = useCallback(async () => {
     if (!session?.projectId) return;
     const payload = {
@@ -338,12 +461,13 @@ function CanvasApp() {
         x: Math.round(node.position.x),
         y: Math.round(node.position.y),
       })).filter((element) => element.object_key),
-      edges: edgesRef.current.map(({ id, source, target }) => ({ id, source, target })),
+      edges: [],
       viewport: viewportRef.current,
       messages: messagesRef.current.map(({ id, role, kind, content, imageObjectKey, imageName, created_at }) => ({
         id, role, kind, content, image_object_key: imageObjectKey, imageName, created_at,
       })),
       settings: typeof window.__getCanvasSettings === "function" ? window.__getCanvasSettings() : {},
+      replace_elements: true,
     };
     const response = await fetch(`/api/projects/${encodeURIComponent(session.projectId)}/canvas`, {
       method: "POST",
@@ -354,20 +478,11 @@ function CanvasApp() {
   }, [session, title]);
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
-  useEffect(() => { edgesRef.current = edges; }, [edges]);
 
   useEffect(() => {
     const sync = (event) => {
       const settings = event.detail || {};
       setComposerSettings((current) => ({ ...current, ...settings }));
-      setNodes((current) => current.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          includeLogo: Boolean(settings.include_logo),
-          includeSearch: Boolean(settings.include_search_overlay),
-        },
-      })));
     };
     const syncPrompt = (event) => {
       const value = String(event.detail?.value || "");
@@ -397,10 +512,14 @@ function CanvasApp() {
       rowCounter = 0;
       lastTypoRef.current = null;
       splitLocksRef.current.clear();
+      brandLocksRef.current.clear();
+      undoStackRef.current = [];
+      redoStackRef.current = [];
       hydratingRef.current = true;
       setNodes([]);
-      setEdges([]);
       setAllMessages([]);
+      setSelectedNodeId("");
+      setLoadingNode(null);
       setChatCollapsed(false);
       setShowMini(false);
       setShowSizeMenu(false);
@@ -421,18 +540,17 @@ function CanvasApp() {
           y: Number.isFinite(Number(element.y)) ? Number(element.y) : 110 + Math.floor(index / 2) * 340,
         },
         data: {
+          nodeId: element.id,
           kind: element.kind,
           url: element.url || "",
           name: element.name,
           objectKey: element.object_key,
           label: labels[element.kind] || "完整 KV",
-          includeLogo: Boolean(project?.settings?.include_logo),
-          includeSearch: Boolean(project?.settings?.include_search_overlay),
           onSplit: (data) => splitHandlerRef.current(data),
+          onBrand: (data) => brandHandlerRef.current(data),
         },
       }));
       if (restored.length) setNodes(restored);
-      setEdges((project?.edges || []).map((edge) => ({ ...edge })));
       setAllMessages((project?.messages || []).map((message) => ({
         id: message.id || `${Date.now()}-${Math.random()}`,
         role: message.role,
@@ -451,13 +569,13 @@ function CanvasApp() {
       });
     };
     window.__saveCanvasRequested = () => saveCanvas();
-  }, [saveCanvas, setNodes, setEdges, setAllMessages, flowInstance]);
+  }, [saveCanvas, setNodes, setAllMessages, flowInstance]);
 
   useEffect(() => {
     if (!session?.projectId || hydratingRef.current) return undefined;
     const timeout = window.setTimeout(() => saveCanvas(), 900);
     return () => window.clearTimeout(timeout);
-  }, [nodes, edges, title, session?.projectId, saveCanvas]);
+  }, [nodes, messages, title, session?.projectId, saveCanvas]);
 
   useEffect(() => {
     if (session?.autoGenerate && session.visual_description && !session.__started) {
@@ -470,12 +588,58 @@ function CanvasApp() {
     const input = chatInputRef.current;
     const text = (input?.value || "").trim();
     if (!text || generating || !session?.projectId) return;
+    const imageNodes = nodesRef.current.filter((node) => node.type === "image" && node.data?.objectKey);
+    const selectedNode = imageNodes.find((node) => node.id === selectedNodeId || node.selected);
+    if (imageNodes.length && !selectedNode) {
+      updateStatusMessage("请先在画布中选择一张图片，再继续编辑");
+      return;
+    }
     input.value = "";
     window.__canvasPromptValue = "";
     setComposerHasText(false);
     setComposerMention(null);
-    runGeneration({ visual_description: text }, []);
-  }, [generating, session, runGeneration]);
+    runGeneration({ visual_description: text }, [], { baseNode: selectedNode || null });
+  }, [generating, session, selectedNodeId, runGeneration, updateStatusMessage]);
+
+  const startNewConversation = useCallback(() => {
+    setAllMessages([]);
+    setComposerMention(null);
+    setComposerHasText(false);
+    setShowSizeMenu(false);
+    window.__canvasPromptValue = "";
+    if (chatInputRef.current) {
+      chatInputRef.current.value = "";
+      chatInputRef.current.focus();
+    }
+  }, [setAllMessages]);
+
+  const handleComposerPaste = useCallback(async (event) => {
+    const files = [...(event.clipboardData?.items || [])]
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item, index) => {
+        const file = item.getAsFile();
+        if (!file) return null;
+        return file.name ? file : new File([file], `pasted-reference-${Date.now()}-${index + 1}.png`, { type: file.type || "image/png" });
+      })
+      .filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault();
+    await window.__addReferenceFiles?.(files);
+  }, []);
+
+  useEffect(() => {
+    const handleHistoryKey = (event) => {
+      if (!document.body.classList.contains("canvas-mode")) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable) return;
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", handleHistoryKey);
+    return () => window.removeEventListener("keydown", handleHistoryKey);
+  }, [redo, undo]);
 
   const refreshComposerMention = useCallback((input) => {
     setComposerMention(composerMentionRange(input?.value, input?.selectionStart || 0));
@@ -535,6 +699,8 @@ function CanvasApp() {
     window.addEventListener("mouseup", onUp);
   }, []);
 
+  const chatTitle = [...messages].reverse().find((message) => message.role === "user" && message.content)?.content || "新对话";
+
   return (
     <div className="canvas-app-shell">
       <div className="canvas-app-main">
@@ -561,12 +727,13 @@ function CanvasApp() {
           )}
         </div>
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={loadingNode ? [...nodes, loadingNode] : nodes}
+          edges={[]}
           onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           onInit={setFlowInstance}
+          onNodeDragStart={() => pushHistory()}
+          onSelectionChange={({ nodes: selectedNodes }) => setSelectedNodeId(selectedNodes.find((node) => node.type === "image")?.id || "")}
           onMoveEnd={(_, viewport) => { viewportRef.current = viewport; }}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
           minZoom={0.1}
@@ -596,8 +763,11 @@ function CanvasApp() {
         <div className="canvas-app-chat" ref={chatPanelRef} style={{ width: chatWidth }}>
           <div className="canvas-chat-resize" onMouseDown={startResize} title="拖拽调整宽度" />
           <div className="cf-chat-head">
-            <span className="cf-chat-title">{messages.length ? (session?.visual_description || title).slice(0, 40) : "新对话"}</span>
-            <button type="button" className="cf-chat-collapse" onClick={() => setChatCollapsed(true)} title="收起" aria-label="收起对话"><img src="/ui-assets/icon/canvas-collapse.png" alt="" /></button>
+            <span className="cf-chat-title">{chatTitle.slice(0, 80)}</span>
+            <div className="cf-chat-head-actions">
+              <button type="button" className="cf-chat-new" onClick={startNewConversation} title="新建对话" aria-label="新建对话"><img src="/ui-assets/icon/canvas-new-chat.svg" alt="" /></button>
+              <button type="button" className="cf-chat-collapse" onClick={() => setChatCollapsed(true)} title="收起" aria-label="收起对话"><img src="/ui-assets/icon/canvas-collapse.png" alt="" /></button>
+            </div>
           </div>
           <div className="cf-chat-messages">
             {!messages.length && <div className="cf-chat-empty">今天想创作什么？</div>}
@@ -615,6 +785,7 @@ function CanvasApp() {
                 className="cf-composer-input"
                 rows={2}
                 placeholder="今天我们要创作什么"
+                onPaste={handleComposerPaste}
                 onChange={(event) => {
                   window.__canvasPromptValue = event.target.value;
                   setComposerHasText(Boolean(event.target.value.trim()));

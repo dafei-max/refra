@@ -5,6 +5,7 @@ const resultView = document.querySelector("#resultView");
 const ADMIN_TOKEN_KEY = "refra_admin_token";
 const recentProjects = document.querySelector("#recentProjects");
 const homeInspiration = document.querySelector("#homeInspiration");
+const homeInspirationModule = document.querySelector("#homeInspirationModule");
 const recentProjectsMore = document.querySelector("#recentProjectsMore");
 const homeInspirationMore = document.querySelector("#homeInspirationMore");
 const inviteButton = document.querySelector("#inviteButton");
@@ -1973,6 +1974,7 @@ function bindHomeInspirationImages(container) {
 }
 
 async function loadHomeInspiration() {
+  if (homeInspirationModule?.classList.contains("hidden")) return;
   renderHomeInspirationSkeletons();
   const role = homeMaterialTab === "全部" ? "" : homeMaterialTab;
   const params = new URLSearchParams({ limit: "10" });
@@ -2077,12 +2079,6 @@ window.__canvasTool = (action, event) => {
       visualDescriptionInput.value = window.__canvasPromptValue.trim();
     }
     expandDescriptionButton.click();
-  } else if (action === "logo" || action === "search") {
-    const button = action === "logo" ? includeLogoButton : includeSearchOverlayButton;
-    const enabled = !isToolToggleEnabled(button);
-    setToolToggleEnabled(button, enabled);
-    window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
-    return enabled;
   }
   return undefined;
 };
@@ -2119,12 +2115,12 @@ window.__getReferenceFiles = () => referenceFiles.map((item) => item.file);
 window.__getReferenceLabels = () => referenceFiles.map((_, index) => referenceLabel(index));
 window.__getReferencePreviews = canvasReferencePreviews;
 window.__removeReferenceFile = removeReferenceFile;
+window.__addReferenceFiles = addReferenceFiles;
 window.__setCanvasImageSize = setImageSize;
 
 window.__canvasReturnedHome = () => {
   showView("generate");
   loadRecentProjects().catch(() => {});
-  loadHomeInspiration().catch(() => {});
 };
 
 window.__saveCanvasRequested = null;

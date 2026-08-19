@@ -16,9 +16,12 @@ test("legacy asset migration creates one Untitled canvas node and remains index-
   assert.match(server, /elements: asset\.object_key\s*\? \[\{ id: newProjectElementId\(\), kind: "kv"/);
 });
 
-test("canvas persistence carries graph, viewport, messages and generation settings", () => {
-  assert.match(server, /async function saveProjectCanvas\(projectId, \{ title, elements, edges, viewport, settings, messages \}\)/);
-  assert.match(canvas, /edges: edgesRef\.current\.map/);
+test("canvas persistence replaces visible elements and stores an edge-free board", () => {
+  assert.match(server, /async function saveProjectCanvas\(projectId, \{ title, elements, edges, viewport, settings, messages, replaceElements = false \}\)/);
+  assert.match(server, /const byKey = new Map\(replaceElements \? \[\] : previousByKey\)/);
+  assert.match(canvas, /edges: \[\]/);
+  assert.match(canvas, /replace_elements: true/);
+  assert.doesNotMatch(canvas, /useEdgesState|<Handle|edgesRef/);
   assert.match(canvas, /viewport: viewportRef\.current/);
   assert.match(canvas, /messages: messagesRef\.current\.map/);
   assert.match(canvas, /settings: typeof window\.__getCanvasSettings/);

@@ -1260,6 +1260,7 @@ const MIME = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
+  ".svg": "image/svg+xml; charset=utf-8",
 };
 
 function jsonResponse(res, status, payload) {
@@ -2381,24 +2382,26 @@ async function appendProjectMessage(projectId, role, content) {
   return message;
 }
 
-async function saveProjectCanvas(projectId, { title, elements, edges, viewport, settings, messages }) {
+async function saveProjectCanvas(projectId, { title, elements, edges, viewport, settings, messages, replaceElements = false }) {
   const projects = await getProjects();
   const project = projects.find((item) => item.id === projectId);
   if (!project) return null;
   if (title && textOf(title).trim()) project.title = textOf(title).trim().slice(0, 60);
   if (Array.isArray(elements)) {
-    const byKey = new Map((project.elements || []).map((element) => [element.object_key, element]));
+    const previousByKey = new Map((project.elements || []).map((element) => [element.object_key, element]));
+    const byKey = new Map(replaceElements ? [] : previousByKey);
     for (const element of elements) {
       if (!element || !element.object_key) continue;
       const key = textOf(element.object_key);
       if (!key) continue;
-      const existing = byKey.get(key);
+      const existing = previousByKey.get(key);
       if (existing) {
         if (textOf(element.id)) existing.id = textOf(element.id).slice(0, 160);
         if (["typography", "kv", "title", "background", "package"].includes(element.kind)) existing.kind = element.kind;
         if (Number.isFinite(Number(element.x))) existing.x = Number(element.x);
         if (Number.isFinite(Number(element.y))) existing.y = Number(element.y);
         if (textOf(element.name)) existing.name = textOf(element.name);
+        byKey.set(key, existing);
       } else {
         byKey.set(key, {
           id: textOf(element.id) || newProjectElementId(),
@@ -2413,7 +2416,7 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
     }
     project.elements = [...byKey.values()];
     const lastKv = [...project.elements].reverse().find((element) => element.kind === "kv");
-    if (lastKv) project.thumbnail = lastKv.object_key;
+    project.thumbnail = lastKv?.object_key || "";
   }
   if (Array.isArray(edges)) {
     project.edges = edges.slice(0, 500).map((edge) => ({
@@ -2499,6 +2502,62 @@ async function deleteProjectElementById(projectId, elementId) {
   project.updated_at = new Date().toISOString();
   await saveProjectsIndex(projects);
   return removed;
+}
+
+async function projectImageElement(projectId, { elementId = "", objectKey = "" } = {}) {
+  const id = textOf(projectId).trim();
+  const key = textOf(objectKey).trim();
+  const nodeId = textOf(elementId).trim();
+  if (!id) throw httpError(400, "缺少项目 ID");
+  const project = (await getProjects()).find((item) => item.id === id);
+  if (!project) throw httpError(404, "未找到该项目");
+  const element = (project.elements || []).find((item) => (
+    (nodeId && item.id === nodeId)
+    || (key && item.object_key === key)
+  ));
+  if (!element?.object_key) throw httpError(404, "未找到该画布图片");
+  if (!await storageExists(element.object_key)) throw httpError(404, "该画布图片文件不存在");
+  return { project, element };
+}
+
+async function createBrandOverlayAsset({ projectId, elementId, objectKey, campaignName }) {
+  const { element } = await projectImageElement(projectId, { elementId, objectKey });
+  const filename = `kv-brand-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.png`;
+  const key = outputKey(filename);
+  const workPath = path.join(RUNTIME_ROOT, "tmp", filename);
+  await mkdir(path.dirname(workPath), { recursive: true });
+  try {
+    await writeFile(workPath, await storageGet(element.object_key));
+    const overlays = await applyLogoOverlay(workPath, {
+      include_logo: true,
+      include_search_overlay: true,
+      campaign_name: textOf(campaignName).trim(),
+    });
+    await storagePut(key, await readFile(workPath), { contentType: "image/png" });
+    const imageResult = {
+      skipped: false,
+      name: filename,
+      object_key: key,
+      url: storageSignUrl(key),
+      generation_mode: "brand-overlay",
+      logo_overlay: overlays.logo_overlay || null,
+      search_overlay: overlays.search_overlay || null,
+    };
+    const result = {
+      request: {
+        project_id: textOf(projectId).trim(),
+        campaign_name: textOf(campaignName).trim(),
+        visual_description: "基于选中图片叠加抖音商城 Logo 与右下角搜索框",
+        uploaded_references: [element.object_key],
+      },
+      image_result: imageResult,
+    };
+    await persistAssetRecord(result);
+    await appendGenerationToProject(textOf(projectId).trim(), result);
+    return imageResult;
+  } finally {
+    await unlink(workPath).catch(() => {});
+  }
 }
 
 async function listAssets() {
@@ -6331,8 +6390,85 @@ async function splitAssetLayers({ name, title, subtitle, time }) {
   };
 }
 
+function buildCanvasEditPrompt(request, additionalReferences = []) {
+  const history = normalizeConversationHistory(request.conversation_history)
+    .map((message) => `${message.role === "assistant" ? "助手" : "用户"}：${message.content}`)
+    .join("\n");
+  const additional = additionalReferences.map((item, index) => (
+    `图 ${index + 2}（${item.label || item.number}）仅按本轮指令指定的用途提供补充参考，不得覆盖图 1 的主体身份、现有文字与版式。`
+  ));
+  return [
+    "执行一次基于当前画布选中图片的连续编辑，不要重新设计或从空白生成。",
+    "图 1 是当前选中的完整基础图，也是最高优先级固定画布。保留所有本轮没有明确要求修改的像素关系、主体身份、人物脸部与体态、产品结构与包装、现有可读文字、Logo、版式、构图、色彩、材质、光影和空间关系。",
+    `本轮编辑指令：${compactValue(request.visual_description, 1200)}`,
+    history ? `最近对话上下文（只用于理解指代与连续意图，最新指令优先）：\n${history}` : "这是当前对话的第一条编辑指令。",
+    ...additional,
+    "只修改本轮指令明确点名的区域或属性，其余区域必须保持稳定；如果指令是添加内容，只在合理空白区域自然加入，不得破坏已有信息层级。",
+    "禁止擅自换脸、换人物、换产品、重做包装、改写现有文字、移动现有 Logo、重排整体版式或改变画幅。禁止新增未提供的品牌、价格、日期、英文、口号、标签、可读小字、Logo、水印或乱码。",
+    "输出与图 1 相同画幅的一张完整商业 KV 编辑结果。",
+  ].filter(Boolean).join("\n");
+}
+
+async function runCanvasEditPipeline(request, onStage, pipelineStartedAt) {
+  const { element } = await projectImageElement(request.project_id, { objectKey: request.base_image_object_key });
+  const baseReference = outputReference(
+    storageSignUrl(element.object_key),
+    "CANVAS_SELECTED_BASE",
+    "当前画布选中的完整基础图；除本轮明确要求外，所有内容保持不变。",
+    "",
+    element.object_key,
+  );
+  const uploadedReferences = referencesForRequest(
+    request,
+    (request.uploaded_references || []).map((url, index) => buildUploadedReference(url, request, index)),
+  ).slice(0, 8);
+  const finalPrompt = buildCanvasEditPrompt(request, uploadedReferences);
+  onStage("status", { message: "正在理解上下文并基于选中图片继续编辑..." });
+  onStage("prompt", { final_prompt: finalPrompt });
+  const generated = await generateImageEditFile({
+    prompt: finalPrompt,
+    selected: [baseReference, ...uploadedReferences],
+    size: SIZE_MAP[request.image_size] || "1024x1024",
+    prefix: "kv-canvas-edit",
+    applyOverlay: true,
+    overlayRequest: request,
+  });
+  const imageResult = generated.skipped
+    ? generated
+    : { ...publicImageLayer(generated), generation_mode: "canvas-edit" };
+  if (!imageResult.skipped) onStage("scene", { scene_layer: imageResult });
+  onStage("image", { image_result: imageResult });
+  const result = {
+    request,
+    final_prompt: finalPrompt,
+    image_result: imageResult,
+    quality_review: { source: "canvas-edit", decision: "deferred" },
+    warnings: [],
+    models: { text: TEXT_MODEL, image: IMAGE_MODEL },
+    performance: {
+      mode: "canvas-edit",
+      target_ms: 180000,
+      total_ms: Date.now() - pipelineStartedAt,
+      stages: {},
+      llm_policy: { prompt: "selected-image-context-edit", post_image_review: "deferred" },
+    },
+  };
+  if (!imageResult.skipped) {
+    await persistAssetRecord(result);
+    await appendGenerationToProject(request.project_id, result);
+  }
+  onStage("complete", result);
+  return result;
+}
+
 async function runPipeline(request, onStage = () => {}) {
   const pipelineStartedAt = Date.now();
+  if (request.edit_mode) {
+    if (!request.project_id || !request.base_image_object_key) {
+      throw httpError(400, "继续编辑需要有效的项目和选中图片");
+    }
+    return runCanvasEditPipeline(request, onStage, pipelineStartedAt);
+  }
   const stageTimings = {};
   const measure = async (stage, task) => {
     const startedAt = Date.now();
@@ -6621,6 +6757,18 @@ async function runPipeline(request, onStage = () => {}) {
   return result;
 }
 
+function normalizeConversationHistory(value) {
+  let list = value;
+  if (typeof value === "string") {
+    try { list = JSON.parse(value); } catch { list = []; }
+  }
+  if (!Array.isArray(list)) return [];
+  return list.slice(-12).map((message) => ({
+    role: message?.role === "assistant" ? "assistant" : "user",
+    content: textOf(message?.content).replace(/\s+/g, " ").trim().slice(0, 1600),
+  })).filter((message) => message.content);
+}
+
 function validateRequest(body) {
   const required = ["visual_description", "image_size"];
   const missing = required.filter((key) => !textOf(body[key]).trim());
@@ -6636,6 +6784,9 @@ function validateRequest(body) {
     style_preset: stylePreset,
     integrated_layout_variant: textOf(body.integrated_layout_variant).trim(),
     project_id: textOf(body.project_id).trim(),
+    edit_mode: booleanPreference(body.edit_mode, false),
+    base_image_object_key: textOf(body.base_image_object_key).trim().slice(0, 1000),
+    conversation_history: normalizeConversationHistory(body.conversation_history),
     generate_image: body.generate_image === true || body.generate_image === "true" || body.generate_image === "on" || body.generate_image === "1",
     uploaded_references: Array.isArray(body.uploaded_references) ? body.uploaded_references.filter(Boolean) : [],
     reference_labels: Array.isArray(body.reference_labels) ? body.reference_labels : [],
@@ -6982,6 +7133,7 @@ const server = createServer(async (req, res) => {
         viewport: body.viewport,
         settings: body.settings,
         messages: body.messages,
+        replaceElements: body.replace_elements === true,
       });
       if (!project) {
         jsonResponse(res, 404, { error: "未找到该项目" });
@@ -7017,6 +7169,20 @@ const server = createServer(async (req, res) => {
         title: textOf(body.title).trim(),
         subtitle: textOf(body.subtitle).trim(),
         time: textOf(body.time).trim(),
+      });
+      jsonResponse(res, 200, result);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/assets/brand-overlay") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
+      const body = await readJsonBody(req);
+      const result = await createBrandOverlayAsset({
+        projectId: body.project_id,
+        elementId: body.element_id,
+        objectKey: body.object_key,
+        campaignName: body.campaign_name,
       });
       jsonResponse(res, 200, result);
       return;
