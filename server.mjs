@@ -2522,19 +2522,36 @@ async function projectImageElement(projectId, { elementId = "", objectKey = "" }
 }
 
 async function createBrandOverlayAsset({ projectId, elementId, objectKey, campaignName }) {
-  const { element } = await projectImageElement(projectId, { elementId, objectKey });
+  const { element } = await brandOverlayStage(
+    "校验画布图片",
+    () => projectImageElement(projectId, { elementId, objectKey }),
+    "项目中没有找到这张图片，请刷新画布后重试",
+  );
   const filename = `kv-brand-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.png`;
   const key = outputKey(filename);
   const workPath = path.join(RUNTIME_ROOT, "tmp", filename);
   await mkdir(path.dirname(workPath), { recursive: true });
   try {
-    await writeFile(workPath, await storageGet(element.object_key));
-    const overlays = await applyLogoOverlay(workPath, {
-      include_logo: true,
-      include_search_overlay: true,
-      campaign_name: textOf(campaignName).trim(),
-    });
-    await storagePut(key, await readFile(workPath), { contentType: "image/png" });
+    const source = await brandOverlayStage(
+      "读取源图",
+      () => storageGet(element.object_key),
+      "无法从 OSS 读取选中的图片",
+    );
+    await writeFile(workPath, source);
+    const overlays = await brandOverlayStage(
+      "处理图片",
+      () => applyLogoOverlay(workPath, {
+        include_logo: true,
+        include_search_overlay: true,
+        campaign_name: textOf(campaignName).trim(),
+      }),
+    );
+    const output = await readFile(workPath);
+    await brandOverlayStage(
+      "保存新图",
+      () => storagePut(key, output, { contentType: "image/png" }),
+      "无法将处理结果写入 OSS",
+    );
     const imageResult = {
       skipped: false,
       name: filename,
@@ -2553,8 +2570,12 @@ async function createBrandOverlayAsset({ projectId, elementId, objectKey, campai
       },
       image_result: imageResult,
     };
-    await persistAssetRecord(result);
-    await appendGenerationToProject(textOf(projectId).trim(), result);
+    await brandOverlayStage("更新资产记录", () => persistAssetRecord(result), "图片已生成，但资产索引写入失败");
+    await brandOverlayStage(
+      "更新项目画布",
+      () => appendGenerationToProject(textOf(projectId).trim(), result),
+      "图片已生成，但项目画布写入失败",
+    );
     return imageResult;
   } finally {
     await unlink(workPath).catch(() => {});
@@ -3186,8 +3207,6 @@ async function applyLogoOverlay(filePath, request = {}) {
     searchWidth: SEARCH_WIDTH,
     searchRight: SEARCH_RIGHT,
     searchBottom: SEARCH_BOTTOM,
-    campaignName: textOf(request.campaign_name).trim(),
-    fontPath: path.join(__dirname, "font", "DouyinSansBold.otf"),
   });
   return {
     logo_overlay: result.logo
@@ -3213,6 +3232,42 @@ async function applyLogoOverlay(filePath, request = {}) {
         }
       : null,
   };
+}
+
+async function brandOverlayStage(label, task, publicMessage) {
+  try {
+    return await task();
+  } catch (error) {
+    console.error(`[brand-overlay:${label}]`, error?.stack || error);
+    throw httpError(error?.statusCode || 500, `${label}失败：${publicMessage || error?.message || "未知错误"}`);
+  }
+}
+
+async function runBrandOverlaySmoke() {
+  const filename = `brand-overlay-smoke-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.png`;
+  const workPath = path.join(RUNTIME_ROOT, "tmp", filename);
+  const startedAt = Date.now();
+  await mkdir(path.dirname(workPath), { recursive: true });
+  try {
+    await writeFile(workPath, await readFile(SEARCH_LIGHT_BG_PATH));
+    const overlays = await applyLogoOverlay(workPath, {
+      include_logo: true,
+      include_search_overlay: true,
+    });
+    const output = await readFile(workPath);
+    if (detectImageType(output) !== "image/png") throw new Error("输出不是有效的 PNG 图片");
+    return {
+      ok: true,
+      engine: "pngjs",
+      python_required: false,
+      duration_ms: Date.now() - startedAt,
+      output_bytes: output.length,
+      logo_variant: overlays.logo_overlay?.variant || "",
+      search_variant: overlays.search_overlay?.variant || "",
+    };
+  } finally {
+    await unlink(workPath).catch(() => {});
+  }
 }
 
 function parseResponseText(payload) {
@@ -6839,6 +6894,12 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
 
+    if (req.method === "GET" && url.pathname === "/api/health/brand-overlay") {
+      if (!applyRateLimit(req, res, RATE_LIMIT_SEARCH_PER_MIN)) return;
+      jsonResponse(res, 200, await runBrandOverlaySmoke());
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/health") {
       const materials = await loadMaterials();
       jsonResponse(res, 200, {
@@ -6846,7 +6907,7 @@ const server = createServer(async (req, res) => {
         has_api_key: Boolean(OPENAI_API_KEY),
         models: { text: TEXT_MODEL, image: IMAGE_MODEL },
         capabilities: {
-          brand_overlay_engine: "sharp",
+          brand_overlay_engine: "pngjs",
           brand_overlay_loading: "lazy",
           brand_overlay_python_required: false,
         },

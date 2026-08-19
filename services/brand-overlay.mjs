@@ -1,90 +1,104 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-let sharpPromise;
+let pngPromise;
 
-async function sharpEngine() {
-  if (!sharpPromise) sharpPromise = import("sharp").then((module) => module.default);
-  return sharpPromise;
+async function pngCodec() {
+  if (!pngPromise) pngPromise = import("pngjs").then((module) => module.PNG || module.default?.PNG);
+  return pngPromise;
 }
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function escapeMarkup(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+async function decodePng(bytes, label) {
+  const PNG = await pngCodec();
+  try {
+    return PNG.sync.read(bytes);
+  } catch (error) {
+    throw new Error(`${label}不是有效的 PNG 图片：${error.message}`);
+  }
 }
 
-function textUnits(value) {
-  return [...value].reduce((total, character) => total + (/^[\x00-\x7F]$/.test(character) ? 0.56 : 1), 0);
+function resizeRgba(source, targetWidth) {
+  const width = Math.max(1, Math.round(targetWidth));
+  const height = Math.max(1, Math.round(source.height * width / source.width));
+  const data = Buffer.alloc(width * height * 4);
+  const xScale = source.width / width;
+  const yScale = source.height / height;
+  for (let y = 0; y < height; y += 1) {
+    const sourceY = Math.min(source.height - 1, (y + 0.5) * yScale - 0.5);
+    const y0 = Math.max(0, Math.floor(sourceY));
+    const y1 = Math.min(source.height - 1, y0 + 1);
+    const yMix = sourceY - y0;
+    for (let x = 0; x < width; x += 1) {
+      const sourceX = Math.min(source.width - 1, (x + 0.5) * xScale - 0.5);
+      const x0 = Math.max(0, Math.floor(sourceX));
+      const x1 = Math.min(source.width - 1, x0 + 1);
+      const xMix = sourceX - x0;
+      const destination = (y * width + x) * 4;
+      for (let channel = 0; channel < 4; channel += 1) {
+        const topLeft = source.data[(y0 * source.width + x0) * 4 + channel];
+        const topRight = source.data[(y0 * source.width + x1) * 4 + channel];
+        const bottomLeft = source.data[(y1 * source.width + x0) * 4 + channel];
+        const bottomRight = source.data[(y1 * source.width + x1) * 4 + channel];
+        const top = topLeft + (topRight - topLeft) * xMix;
+        const bottom = bottomLeft + (bottomRight - bottomLeft) * xMix;
+        data[destination + channel] = Math.round(top + (bottom - top) * yMix);
+      }
+    }
+  }
+  return { width, height, data };
 }
 
-function fittedTitle(value, maxWidth, preferredSize) {
-  let title = String(value || "").replace(/\s+/g, " ").trim();
-  if (!title) return { text: "", fontSize: preferredSize };
-  let fontSize = Math.max(10, Math.min(preferredSize, Math.floor(maxWidth / Math.max(1, textUnits(title)))));
-  if (textUnits(title) * fontSize <= maxWidth) return { text: title, fontSize };
-  const suffix = "…";
-  while (title && (textUnits(title) + textUnits(suffix)) * fontSize > maxWidth) title = title.slice(0, -1);
-  return { text: title ? `${title}${suffix}` : "", fontSize };
+function averageLuminance(image, { left, top, width, height }) {
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
+  const right = Math.min(image.width, left + width);
+  const bottom = Math.min(image.height, top + height);
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      const offset = (y * image.width + x) * 4;
+      red += image.data[offset];
+      green += image.data[offset + 1];
+      blue += image.data[offset + 2];
+      count += 1;
+    }
+  }
+  if (!count) return 0;
+  return 0.2126 * red / count + 0.7152 * green / count + 0.0722 * blue / count;
 }
 
-let embeddedFontPromise;
-
-async function embeddedFont(fontPath) {
-  if (!embeddedFontPromise) embeddedFontPromise = readFile(fontPath).then((font) => font.toString("base64"));
-  return embeddedFontPromise;
+function compositeOver(base, layer, left, top) {
+  for (let y = 0; y < layer.height; y += 1) {
+    const destinationY = top + y;
+    if (destinationY < 0 || destinationY >= base.height) continue;
+    for (let x = 0; x < layer.width; x += 1) {
+      const destinationX = left + x;
+      if (destinationX < 0 || destinationX >= base.width) continue;
+      const sourceOffset = (y * layer.width + x) * 4;
+      const destinationOffset = (destinationY * base.width + destinationX) * 4;
+      const sourceAlpha = layer.data[sourceOffset + 3] / 255;
+      if (sourceAlpha <= 0) continue;
+      const destinationAlpha = base.data[destinationOffset + 3] / 255;
+      const outputAlpha = sourceAlpha + destinationAlpha * (1 - sourceAlpha);
+      for (let channel = 0; channel < 3; channel += 1) {
+        const sourceValue = layer.data[sourceOffset + channel];
+        const destinationValue = base.data[destinationOffset + channel];
+        base.data[destinationOffset + channel] = outputAlpha > 0
+          ? Math.round((sourceValue * sourceAlpha + destinationValue * destinationAlpha * (1 - sourceAlpha)) / outputAlpha)
+          : 0;
+      }
+      base.data[destinationOffset + 3] = Math.round(outputAlpha * 255);
+    }
+  }
 }
 
-async function averageLuminance(image, { left, top, width, height }) {
-  if (width <= 0 || height <= 0) return 0;
-  const sharp = await sharpEngine();
-  const { channels } = await sharp(image).extract({ left, top, width, height }).stats();
-  const [red = {}, green = {}, blue = {}] = channels;
-  return 0.2126 * Number(red.mean || 0) + 0.7152 * Number(green.mean || 0) + 0.0722 * Number(blue.mean || 0);
-}
-
-async function resizedLayer(assetPath, width) {
-  const sharp = await sharpEngine();
-  return sharp(await readFile(assetPath))
-    .resize({ width, kernel: sharp.kernel.lanczos3 })
-    .ensureAlpha()
-    .png()
-    .toBuffer({ resolveWithObject: true });
-}
-
-async function addSearchTitle(layer, title, fontPath) {
-  const left = Math.round(layer.info.width * 0.40);
-  const top = Math.round(layer.info.height * 0.68);
-  const width = Math.max(1, Math.round(layer.info.width * 0.84) - left);
-  const height = Math.max(1, Math.round(layer.info.height * 0.95) - top);
-  const fitted = fittedTitle(title, width, Math.max(10, Math.round(layer.info.width * 0.052)));
-  if (!fitted.text) return layer.data;
-  const fontData = await embeddedFont(fontPath);
-  const textSvg = Buffer.from([
-    `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">`,
-    "<style>@font-face{font-family:DouyinSans;src:url(data:font/otf;base64,",
-    fontData,
-    ") format('opentype')}</style>",
-    `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" dominant-baseline="central" font-family="DouyinSans" font-size="${fitted.fontSize}" fill="#121212">`,
-    escapeMarkup(fitted.text),
-    "</text></svg>",
-  ].join(""));
-  const sharp = await sharpEngine();
-  return sharp(layer.data)
-    .composite([{
-      input: textSvg,
-      left,
-      top,
-    }])
-    .png()
-    .toBuffer();
+async function resizedLayer(assetPath, width, label) {
+  return resizeRgba(await decodePng(await readFile(assetPath), label), width);
 }
 
 export async function applyBrandOverlays(filePath, options = {}) {
@@ -92,51 +106,41 @@ export async function applyBrandOverlays(filePath, options = {}) {
   const includeSearch = options.includeSearch !== false;
   if (!includeLogo && !includeSearch) return { logo: null, search: null };
 
-  const sharp = await sharpEngine();
-  const normalized = await sharp(await readFile(filePath))
-    .rotate()
-    .ensureAlpha()
-    .png()
-    .toBuffer({ resolveWithObject: true });
-  const baseWidth = normalized.info.width;
-  const baseHeight = normalized.info.height;
-  const composites = [];
+  const base = await decodePng(await readFile(filePath), "源图");
   let logo = null;
   let search = null;
 
   if (includeLogo && options.darkLogoPath && options.lightLogoPath) {
-    const left = clamp(Math.round(options.logoLeft || 0), 0, Math.max(0, baseWidth - 1));
-    const top = clamp(Math.round(options.logoTop || 0), 0, Math.max(0, baseHeight - 1));
-    const width = clamp(Math.round(options.logoWidth || 1), 1, Math.max(1, baseWidth - left));
-    const probe = await resizedLayer(options.darkLogoPath, width);
-    const sampleHeight = Math.min(probe.info.height, baseHeight - top);
-    const luminance = await averageLuminance(normalized.data, { left, top, width, height: sampleHeight });
+    const left = clamp(Math.round(options.logoLeft || 0), 0, Math.max(0, base.width - 1));
+    const top = clamp(Math.round(options.logoTop || 0), 0, Math.max(0, base.height - 1));
+    const width = clamp(Math.round(options.logoWidth || 1), 1, Math.max(1, base.width - left));
+    const darkLayer = await resizedLayer(options.darkLogoPath, width, "深色背景 Logo 素材");
+    const luminance = averageLuminance(base, { left, top, width, height: darkLayer.height });
     const assetPath = luminance >= 150 ? options.lightLogoPath : options.darkLogoPath;
-    const layer = assetPath === options.darkLogoPath ? probe : await resizedLayer(assetPath, width);
-    composites.push({ input: layer.data, left, top, blend: "over" });
-    logo = { path: assetPath, name: path.basename(assetPath), luminance, left, top, width, height: layer.info.height };
+    const layer = assetPath === options.darkLogoPath
+      ? darkLayer
+      : await resizedLayer(assetPath, width, "浅色背景 Logo 素材");
+    compositeOver(base, layer, left, top);
+    logo = { path: assetPath, name: path.basename(assetPath), luminance, left, top, width, height: layer.height };
   }
 
   if (includeSearch && options.searchLightPath && options.searchDarkPath) {
     const right = Math.max(0, Math.round(options.searchRight || 0));
     const bottom = Math.max(0, Math.round(options.searchBottom || 0));
-    const requestedWidth = Math.max(1, Math.round(options.searchWidth || 1));
-    const width = Math.min(requestedWidth, Math.max(1, baseWidth - right));
-    const probe = await resizedLayer(options.searchLightPath, width);
-    const left = Math.max(0, baseWidth - right - width);
-    const top = Math.max(0, baseHeight - bottom - probe.info.height);
-    const sampleHeight = Math.min(probe.info.height, baseHeight - top);
-    const luminance = await averageLuminance(normalized.data, { left, top, width, height: sampleHeight });
+    const width = Math.min(Math.max(1, Math.round(options.searchWidth || 1)), Math.max(1, base.width - right));
+    const lightLayer = await resizedLayer(options.searchLightPath, width, "浅色背景搜索框素材");
+    const left = Math.max(0, base.width - right - width);
+    const top = Math.max(0, base.height - bottom - lightLayer.height);
+    const luminance = averageLuminance(base, { left, top, width, height: lightLayer.height });
     const assetPath = luminance >= 150 ? options.searchLightPath : options.searchDarkPath;
-    const layer = assetPath === options.searchLightPath ? probe : await resizedLayer(assetPath, width);
-    const input = await addSearchTitle(layer, options.campaignName, options.fontPath);
-    composites.push({ input, left, top, blend: "over" });
-    search = { path: assetPath, name: path.basename(assetPath), luminance, left, top, width, height: layer.info.height };
+    const layer = assetPath === options.searchLightPath
+      ? lightLayer
+      : await resizedLayer(assetPath, width, "深色背景搜索框素材");
+    compositeOver(base, layer, left, top);
+    search = { path: assetPath, name: path.basename(assetPath), luminance, left, top, width, height: layer.height };
   }
 
-  const output = composites.length
-    ? await sharp(normalized.data).composite(composites).png().toBuffer()
-    : normalized.data;
-  await writeFile(filePath, output);
+  const PNG = await pngCodec();
+  await writeFile(filePath, PNG.sync.write(base));
   return { logo, search };
 }

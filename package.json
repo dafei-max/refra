@@ -5,7 +5,7 @@
   "type": "module",
   "dependencies": {
     "ali-oss": "^6.23.0",
-    "sharp": "^0.35.3"
+    "pngjs": "^7.0.0"
   },
   "scripts": {
     "build:canvas": "esbuild frontend/canvas.jsx --bundle --minify --outfile=public/canvas-app.js --define:process.env.NODE_ENV='\"production\"' --log-level=warning",

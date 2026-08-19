@@ -1,21 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import sharp from "sharp";
+import pngjs from "pngjs";
 import { applyBrandOverlays } from "../services/brand-overlay.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const { PNG } = pngjs;
 
 test("brand overlays are composited in Node without a Python runtime", async () => {
   const workDir = await mkdtemp(path.join(tmpdir(), "refra-brand-overlay-"));
   const output = path.join(workDir, "source.png");
   try {
-    await sharp({
-      create: { width: 900, height: 700, channels: 3, background: "#f4f4f4" },
-    }).png().toFile(output);
+    const source = new PNG({ width: 900, height: 700 });
+    for (let offset = 0; offset < source.data.length; offset += 4) {
+      source.data[offset] = 244;
+      source.data[offset + 1] = 244;
+      source.data[offset + 2] = 244;
+      source.data[offset + 3] = 255;
+    }
+    await writeFile(output, PNG.sync.write(source));
     const before = await readFile(output);
     const result = await applyBrandOverlays(output, {
       includeLogo: true,
@@ -30,15 +36,12 @@ test("brand overlays are composited in Node without a Python runtime", async () 
       searchWidth: 295,
       searchRight: 44,
       searchBottom: 22,
-      campaignName: "测试活动",
-      fontPath: path.join(root, "font", "DouyinSansBold.otf"),
     });
     const after = await readFile(output);
-    const metadata = await sharp(after).metadata();
+    const rendered = PNG.sync.read(after);
     assert.notDeepEqual(after, before);
-    assert.equal(metadata.format, "png");
-    assert.equal(metadata.width, 900);
-    assert.equal(metadata.height, 700);
+    assert.equal(rendered.width, 900);
+    assert.equal(rendered.height, 700);
     assert.equal(result.logo?.name, "Group 2147242265.png");
     assert.equal(result.search?.name, "search_light.png");
     assert.ok(result.logo.luminance >= 150);
@@ -48,7 +51,7 @@ test("brand overlays are composited in Node without a Python runtime", async () 
   }
 });
 
-test("production bundle includes the font and server no longer spawns apply_logo.py", async () => {
+test("production bundle uses the lazy pure-JavaScript overlay engine", async () => {
   const [server, service, vercel] = await Promise.all([
     readFile(path.join(root, "server.mjs"), "utf-8"),
     readFile(path.join(root, "services", "brand-overlay.mjs"), "utf-8"),
@@ -57,10 +60,11 @@ test("production bundle includes the font and server no longer spawns apply_logo
   assert.match(server, /import \{ applyBrandOverlays \}/);
   assert.doesNotMatch(server, /apply_logo\.py/);
   assert.doesNotMatch(server, /codex-runtimes/);
-  assert.match(server, /brand_overlay_engine: "sharp"/);
+  assert.match(server, /brand_overlay_engine: "pngjs"/);
   assert.match(server, /brand_overlay_loading: "lazy"/);
   assert.match(server, /brand_overlay_python_required: false/);
-  assert.doesNotMatch(service, /^import sharp/m);
-  assert.match(service, /import\("sharp"\)/);
-  assert.match(vercel, /font\/\*\*/);
+  assert.doesNotMatch(service, /sharp/);
+  assert.match(service, /import\("pngjs"\)/);
+  assert.doesNotMatch(vercel, /font\/\*\*/);
+  assert.match(server, /url\.pathname === "\/api\/health\/brand-overlay"/);
 });
