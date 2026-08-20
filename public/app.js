@@ -651,6 +651,27 @@ async function addReferenceFiles(files) {
   renderReferenceStrip();
 }
 
+function pastedImageFiles(clipboardData) {
+  return [...(clipboardData?.items || [])]
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item, index) => {
+      const file = item.getAsFile();
+      if (!file) return null;
+      return file.name
+        ? file
+        : new File([file], `pasted-reference-${Date.now()}-${index + 1}.png`, { type: file.type || "image/png" });
+    })
+    .filter(Boolean);
+}
+
+async function handleVisualDescriptionPaste(event) {
+  const files = pastedImageFiles(event.clipboardData);
+  if (!files.length) return;
+  event.preventDefault();
+  setError("");
+  await addReferenceFiles(files);
+}
+
 function materialDescription(item) {
   return String(item?.reference_description || item?.Reference || "").trim();
 }
@@ -2196,6 +2217,7 @@ form.addEventListener("submit", async (event) => {
 
 uploadTrigger.addEventListener("click", () => referenceImageInput.click());
 referenceImageInput.addEventListener("change", () => addReferenceFiles(referenceImageInput.files || []));
+visualDescriptionInput.addEventListener("paste", handleVisualDescriptionPaste);
 visualDescriptionInput.addEventListener("input", renderMentionMenu);
 visualDescriptionInput.addEventListener("input", autoResizeDescription);
 visualDescriptionInput.addEventListener("click", renderMentionMenu);

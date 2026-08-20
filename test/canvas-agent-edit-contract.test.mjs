@@ -41,8 +41,11 @@ test("canvas supports node undo and redo without graph edges", () => {
   assert.doesNotMatch(canvas, /useEdgesState|onEdgesChange|<Handle/);
 });
 
-test("canvas composer pastes images and starts a clean conversation", () => {
+test("home and canvas composers paste images and canvas starts a clean conversation", () => {
   assert.match(app, /window\.__addReferenceFiles = addReferenceFiles/);
+  assert.match(app, /function handleVisualDescriptionPaste\(event\)/);
+  assert.match(app, /pastedImageFiles\(event\.clipboardData\)/);
+  assert.match(app, /visualDescriptionInput\.addEventListener\("paste", handleVisualDescriptionPaste\)/);
   assert.match(canvas, /event\.clipboardData\?\.items/);
   assert.match(canvas, /onPaste=\{handleComposerPaste\}/);
   assert.match(canvas, /className="cf-chat-new"/);
