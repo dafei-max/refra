@@ -3092,6 +3092,19 @@ body {
   font-size: 12px;
 }
 
+#recentProjectsMore {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+}
+
+#recentProjectsMore img {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
 .project-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
