@@ -293,6 +293,28 @@ function showView(view) {
     button.classList.toggle("active", button.dataset.viewTarget === view);
   });
   document.body.classList.toggle("canvas-mode", view === "canvas");
+  if (view !== "canvas") clearProjectLocation();
+}
+
+function projectLocation(projectId) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("projectId", String(projectId || "").trim());
+  return url;
+}
+
+function clearProjectLocation() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("projectId")) return;
+  url.searchParams.delete("projectId");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function openProjectInNewTab(projectId) {
+  const tab = window.open(projectLocation(projectId).href, "_blank");
+  if (!tab) throw new Error("浏览器阻止了新标签页，请允许此网站打开弹窗后重试");
+  tab.opener = null;
 }
 
 function styleNameShort(name) {
@@ -1753,6 +1775,12 @@ async function boot() {
   try {
     renderSizePicker();
     runButton.classList.toggle("active", visualDescriptionInput.value.trim().length > 0);
+    const initialProjectId = new URLSearchParams(window.location.search).get("projectId")?.trim();
+    if (initialProjectId) {
+      await loadStyles();
+      await openCanvas(initialProjectId);
+      return;
+    }
     const results = await Promise.allSettled([
       loadStyles(),
       loadRecentProjects(),
@@ -1889,7 +1917,11 @@ function bindProjectCardInteractions(container) {
     }
     card.addEventListener("click", (event) => {
       if (event.target.closest(".project-card-actions")) return;
-      openCanvas(card.dataset.projectId).catch((error) => setError(error.message));
+      try {
+        openProjectInNewTab(card.dataset.projectId);
+      } catch (error) {
+        setError(error.message);
+      }
     });
     const trigger = card.querySelector(".project-menu-trigger");
     const menu = card.querySelector(".project-card-menu");
@@ -2058,6 +2090,7 @@ async function openCanvas(projectId, init = null) {
   ]);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "读取项目失败");
+  window.history.replaceState(null, "", projectLocation(projectId));
   showView("canvas");
   window.__startCanvasSession(init ? { ...init, projectId, project: payload } : { projectId, project: payload });
 }
