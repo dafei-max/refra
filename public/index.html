@@ -69,7 +69,7 @@
 
               <div id="sizePopover" class="floating-picker size-picker hidden"></div>
 
-              <div class="brief-top-row">
+              <div id="briefTopRow" class="brief-top-row hidden">
                 <span class="brief-guide">主标题为</span>
                 <input id="campaignNameInput" class="title-input" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
                 <span class="brief-guide">，副标题为</span>
@@ -96,8 +96,8 @@
                     <img src="/ui-assets/jia.png" alt="" />
                   </button>
                   <button type="button" class="tool-button" id="stylePickerButton">
-                    <img id="stylePickerIcon" class="tool-icon-img" src="/ui-assets/fengge.png" alt="" />
-                    <span id="stylePickerLabel">风格预设</span>
+                    <img id="stylePickerIcon" class="tool-icon-img" src="/ui-assets/icon/skill.svg" alt="" />
+                    <span id="stylePickerLabel">技能</span>
                   </button>
                   <button type="button" class="tool-button" id="sizePickerButton">
                     <span id="sizeIcon" class="size-icon ratio-34"></span>
@@ -172,11 +172,9 @@
 
         <section id="stylesPage" class="neo-page styles-page">
           <div class="page-content">
-            <h1>风格预设管理</h1>
+            <h1>技能</h1>
             <div id="styleMessage" class="inline-message"></div>
-            <div id="styleList" class="style-card-grid empty-state">正在读取风格...</div>
-            <input id="styleFolderInput" type="file" webkitdirectory directory multiple hidden />
-            <form id="styleForm" class="hidden"></form>
+            <div id="styleList" class="style-card-grid empty-state">正在读取技能...</div>
           </div>
         </section>
 

@@ -95,7 +95,6 @@ if (IS_VERCEL && !ADMIN_TOKEN) {
 }
 const UPLOAD_DIR = path.join(UPLOAD_ROOT, "materials");
 const REFERENCE_UPLOAD_DIR = path.join(UPLOAD_ROOT, "references");
-const STYLE_UPLOAD_DIR = path.join(UPLOAD_ROOT, "styles");
 const LOGO_DARK_BG_PATH = path.join(IMAGE_DIR, "Group.png");
 const LOGO_LIGHT_BG_PATH = path.join(IMAGE_DIR, "Group 2147242265.png");
 const LOGO_WIDTH = 200;
@@ -112,10 +111,6 @@ const PACKAGED_MATERIALS_PATH = path.join(__dirname, "data", "materials.json");
 const MATERIALS_PATH = IS_VERCEL
   ? path.join(RUNTIME_ROOT, "data", "materials.json")
   : PACKAGED_MATERIALS_PATH;
-const PACKAGED_CUSTOM_STYLES_PATH = path.join(__dirname, "data", "style-presets.json");
-const CUSTOM_STYLES_PATH = IS_VERCEL
-  ? path.join(RUNTIME_ROOT, "data", "style-presets.json")
-  : PACKAGED_CUSTOM_STYLES_PATH;
 const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
 const AUTO_ART_DIRECTOR_RETRY = modeFlag("AUTO_ART_DIRECTOR_RETRY");
 const ART_DIRECTOR_RETRY_LIMIT = 1;
@@ -440,17 +435,17 @@ const STYLE_PRESETS = [
   },
   {
     id: THREE_D_PRESET_ID,
-    name: "3D风格",
-    subtitle: "立体潮流质感",
+    name: "3D KV 主视觉设计",
+    subtitle: "自动匹配黏土、软胶、植绒、毛绒与针织材质，生成关系鲜明、富有张力的 3D 营销主视觉。",
     preset_id: THREE_D_PRESET_ID,
-    thumbnail: "/style/3D%E9%A3%8E%E6%A0%BC/%E9%A3%8E%E6%A0%BC/style1.png",
+    thumbnail: "/style/3D%E9%A3%8E%E6%A0%BC/reference-library/3d-clay-character-001.png",
   },
   {
     id: MINIMAL_FLAT_PRESET_ID,
-    name: "极简扁平插画",
-    subtitle: "留白极简插画",
+    name: "扁平 KV 主视觉设计",
+    subtitle: "自动匹配几何版画、贴纸拼贴、胶版叠压、清爽矢量与马克笔涂鸦风格，生成抽象且具有设计感的扁平营销主视觉。",
     preset_id: MINIMAL_FLAT_PRESET_ID,
-    thumbnail: "/style/%E6%9E%81%E7%AE%80%E6%89%81%E5%B9%B3%E6%8F%92%E7%94%BB/%E9%A3%8E%E6%A0%BC/style1.jpg",
+    thumbnail: "/style/%E6%9E%81%E7%AE%80%E6%89%81%E5%B9%B3%E6%8F%92%E7%94%BB/reference-library/flat-clean-vector-whimsy-mixed-001.png",
   },
   {
     id: REAL_PRODUCT_PRESET_ID,
@@ -502,17 +497,18 @@ const HAND_DRAWN_PRESET = {
 
 const THREE_D_PRESET = {
   preset_id: THREE_D_PRESET_ID,
-  preset_name: "3D风格预设",
-  style_group: "3D立体 / 潮流产品视觉 / 玩具化渲染 / 商业海报",
+  preset_name: "3D KV 主视觉设计",
+  style_group: "关系优先的 3D 营销主视觉 / 材质路由 / 单一焦点",
   aspect_ratio_recommend: ["3:4", "4:3", "16:9", "1:1"],
   output_type: "活动海报 / 营销KV / 3D视觉海报",
   reference_base: "style",
   reference_dir: "3D风格",
+  skill_dir: "skill-3d-kv-main-visual",
   shared_style: {
-    visual_style: ["3D渲染", "立体潮流视觉", "玩具化产品表现", "商业海报构图", "高识别主体", "趣味场景化"],
-    composition_rules: ["标题区、主体区和辅助信息区分区清楚", "主视觉主体突出", "根据排版参考保留留白", "元素数量克制，避免细碎堆叠"],
+    visual_style: ["3D渲染", "关系优先", "商业主视觉", "单一视觉焦点", "材质统一", "高识别主体"],
+    composition_rules: ["先建立主体、伙伴和环境的关系，再决定镜头", "主体占有效画面60%-80%", "保留20%-35%干净负空间", "只保留一个主焦点和2-3条动作轴", "禁止默认Q版、默认鱼眼和无意义装饰堆叠"],
     color_rules: ["使用明快高识别主色", "辅助色控制在2-4种", "整体色彩统一干净", "避免高饱和混乱配色"],
-    texture_rules: ["参考3D风格图的材质、体积、边缘和商业完成度", "允许软胶、塑料、金属、布纹、颗粒、透明材质等", "光影统一，主体清晰"],
+    texture_rules: ["按语义自动路由黏土、软胶果冻、软胶植绒、毛绒或针织材质", "单一主材质占70%-100%", "最多一种次材质且不超过30%", "光影、边缘和空间关系统一"],
   },
   title_style: {
     style_name: "潮流标题字",
@@ -520,10 +516,8 @@ const THREE_D_PRESET = {
     avoid: ["不要复制参考图具体文字", "不要新增英文", "不要生成无关日期、价格、口号"],
   },
   reference_groups: [
-    { id: "integrated_layout", role: "整合版式", label: "整合版式参考", dir: "整合版式", count: 1 },
-    { id: "style", role: "风格", label: "风格参考", dir: "风格", count: 1 },
-    { id: "element", role: "元素", label: "元素参考", dir: "元素", count: 1 },
-    { id: "character", role: "角色", label: "角色参考", dir: "角色", count: 1, when: "character" },
+    { id: "integrated_layout", role: "整合版式", label: "整合版式参考", dir: "layout-library", count: 1 },
+    { id: "style", role: "风格", label: "材质参考", dir: "reference-library", count: 1 },
   ],
   scene_expansion_rules: [
     "画面要有留白，不做过多细碎的内容",
@@ -677,17 +671,18 @@ const OUTLINE_PRESET = {
 
 const MINIMAL_FLAT_PRESET = {
   preset_id: MINIMAL_FLAT_PRESET_ID,
-  preset_name: "极简扁平插画预设",
-  style_group: "极简扁平插画 / Minimal flat illustration / Clean poster / Soft editorial illustration",
+  preset_name: "扁平 KV 主视觉设计",
+  style_group: "关系优先的扁平营销主视觉 / 五类风格路由 / 单一焦点",
   aspect_ratio_recommend: ["3:4", "4:3", "16:9", "1:1", "9:16"],
   output_type: "活动海报 / 营销KV / 极简插画传播海报",
   reference_base: "style",
   reference_dir: "极简扁平插画",
+  skill_dir: "skill-flat-kv-main-visual",
   shared_style: {
-    visual_style: ["极简扁平插画", "干净留白", "低复杂度构图", "清晰主体", "柔和色块", "轻量图形语言", "现代传播海报"],
-    composition_rules: ["画面必须有大面积留白", "只保留一个核心主体或一组核心关系", "辅助元素数量克制", "标题区、主体区和留白区清楚", "避免复杂远景、拥挤场景和碎片化装饰"],
+    visual_style: ["扁平主视觉", "关系优先", "抽象设计感", "单一视觉焦点", "稳定边缘系统", "商业传播海报"],
+    composition_rules: ["先建立主体关系再选择风格", "主体占有效画面55%-80%", "保留20%-40%负空间", "只保留一个核心主体或一组核心关系", "避免复杂远景、拥挤场景和碎片化装饰"],
     color_rules: ["使用低复杂度配色", "主色控制在1-2个", "辅助色控制在2-3个", "色块干净、柔和、对比清晰", "避免脏色、渐变过多和高饱和混乱配色"],
-    texture_rules: ["平面色块", "简洁轮廓", "少量柔和阴影或无阴影", "轻微纸感或数字插画感", "不要写实摄影", "不要复杂3D渲染", "不要厚重材质和高反射"],
+    texture_rules: ["自动路由几何颗粒版画、贴纸拼贴、胶版叠压、清爽矢量或马克笔涂鸦", "主风格占80%-100%", "最多一种次风格", "边缘、颗粒和深度系统不得混用", "不要写实摄影或复杂3D"],
   },
   pet_character_style_constraint: {
     enabled: true,
@@ -728,10 +723,8 @@ const MINIMAL_FLAT_PRESET = {
     avoid: ["不要复杂字体特效", "不要金属锐利字", "不要厚重POP字", "不要自动新增英文", "不要细碎小字堆叠"],
   },
   reference_groups: [
-    { id: "integrated_layout", role: "整合版式", label: "整合版式参考", dir: "整合版式", count: 1 },
-    { id: "style", role: "风格", label: "风格参考", dir: "风格", count: 1 },
-    { id: "element", role: "元素", label: "元素参考", dir: "元素", count: 1 },
-    { id: "character", role: "角色", label: "角色参考", dir: "角色", count: 1, when: "character" },
+    { id: "integrated_layout", role: "整合版式", label: "整合版式参考", dir: "layout-library", count: 1 },
+    { id: "style", role: "风格", label: "风格参考", dir: "reference-library", count: 1 },
   ],
   scene_expansion_rules: [
     "画面必须有明显留白，不做过多细碎内容",
@@ -1126,131 +1119,8 @@ function presetReferenceGroups(preset) {
   return Array.isArray(preset?.reference_groups) ? preset.reference_groups : [];
 }
 
-let customStylePresetsCache = null;
-
-async function hydrateCustomStylePresets() {
-  if (IS_OSS) {
-    try {
-      const payload = JSON.parse((await storageGet("data/style-presets.json")).toString("utf-8"));
-      customStylePresetsCache = (payload.presets || []).map(normalizeCustomStylePreset).filter((item) => item.preset_id && item.preset_name);
-      return;
-    } catch (error) {
-      if (!(error instanceof StorageError)) throw error;
-    }
-  }
-  customStylePresetsCache = null;
-}
-
-function loadCustomStylePresets() {
-  if (customStylePresetsCache) return customStylePresetsCache;
-  const sourcePath = existsSync(CUSTOM_STYLES_PATH)
-    ? CUSTOM_STYLES_PATH
-    : PACKAGED_CUSTOM_STYLES_PATH;
-  if (!existsSync(sourcePath)) return [];
-  try {
-    const payload = JSON.parse(readFileSync(sourcePath, "utf-8"));
-    return (payload.presets || []).map(normalizeCustomStylePreset).filter((item) => item.preset_id && item.preset_name);
-  } catch {
-    return [];
-  }
-}
-
-async function saveCustomStylePresets(presets) {
-  const normalized = presets.map(normalizeCustomStylePreset).filter((item) => item.preset_id && item.preset_name);
-  customStylePresetsCache = normalized;
-  const payload = JSON.stringify({ source: "dynamic-style-presets", count: normalized.length, presets: normalized }, null, 2);
-  if (IS_OSS) {
-    await storagePut("data/style-presets.json", Buffer.from(payload, "utf-8"), { contentType: "application/json" });
-    return normalized;
-  }
-  await mkdir(path.dirname(CUSTOM_STYLES_PATH), { recursive: true });
-  await writeFile(CUSTOM_STYLES_PATH, payload, "utf-8");
-  return normalized;
-}
-
-function normalizeCustomStylePreset(raw = {}) {
-  const presetId = safeSlug(raw.preset_id || raw.id || raw.name || raw.preset_name, "style");
-  const presetName = textOf(raw.preset_name || raw.name || presetId).trim();
-  const styleGroup = textOf(raw.style_group || raw.subtitle || presetName).trim();
-  const referenceDir = safeSlug(raw.reference_dir || presetId, "style");
-  const variants = Array.isArray(raw.title_variants) ? raw.title_variants : [];
-  return {
-    ...raw,
-    custom: true,
-    id: presetId,
-    preset_id: presetId,
-    preset_name: presetName,
-    name: textOf(raw.name || presetName).trim(),
-    subtitle: textOf(raw.subtitle || styleGroup || "自定义风格").trim(),
-    style_group: styleGroup,
-    reference_base: "uploads",
-    reference_dir: referenceDir,
-    thumbnail: textOf(raw.thumbnail).trim(),
-    visual_keywords: Array.isArray(raw.visual_keywords) ? raw.visual_keywords : linesOf(raw.visual_keywords || styleGroup),
-    shared_style: raw.shared_style || {
-      visual_style: linesOf(raw.visual_style || raw.visual_keywords || styleGroup),
-      color_rules: linesOf(raw.color_rules),
-      texture_rules: linesOf(raw.texture_rules),
-      composition_rules: linesOf(raw.composition_rules),
-      mood: linesOf(raw.mood),
-    },
-    title_style: raw.title_style || {
-      style_name: textOf(raw.title_style_name || "参考图标题样式").trim(),
-      features: linesOf(raw.title_style_features || raw.title_style),
-      avoid: linesOf(raw.title_style_avoid),
-    },
-    scene_expansion_rules: Array.isArray(raw.scene_expansion_rules) ? raw.scene_expansion_rules : linesOf(raw.scene_expansion_rules),
-    title_variants: variants.map((variant, index) => ({
-      variant_id: safeSlug(variant.variant_id || `${presetId}_variant_${index + 1}`, "variant"),
-      file: textOf(variant.file).trim(),
-      image: textOf(variant.image).trim(),
-      style_name: textOf(variant.style_name || `变体 ${index + 1}`).trim(),
-      features: Array.isArray(variant.features) ? variant.features : linesOf(variant.features || variant.description),
-      prompt_note: textOf(variant.prompt_note).trim(),
-      best_for: Array.isArray(variant.best_for) ? variant.best_for : linesOf(variant.best_for),
-    })).filter((variant) => variant.file || variant.image),
-  };
-}
-
 function allStylePresetCards() {
-  const builtInNames = new Set(STYLE_PRESETS.map((preset) => preset.name));
-  return [
-    ...STYLE_PRESETS,
-    ...loadCustomStylePresets()
-      .filter((preset) => !builtInNames.has(preset.name || preset.preset_name))
-      .map((preset) => ({
-        id: preset.preset_id,
-        name: preset.name || preset.preset_name,
-        subtitle: preset.subtitle || preset.style_group || "自定义风格",
-        preset_id: preset.preset_id,
-        thumbnail: preset.thumbnail,
-        custom: true,
-      })),
-  ];
-}
-
-function integratedLayoutCardsForPreset(preset) {
-  const group = presetReferenceGroups(preset).find((item) => item.id === "integrated_layout");
-  if (!group) return [];
-  return loadPresetReferenceGroup(preset, group).map((variant) => ({
-    variant_id: variant.variant_id,
-    style_name: variant.style_name,
-    image: variant.image,
-    orientation: variant.composition_orientation,
-    layout_metadata: {
-      orientation: variant.layout_metadata?.orientation || "",
-      source_aspect_ratio: variant.layout_metadata?.source_aspect_ratio || "",
-      supported_slots: variant.layout_metadata?.supported_slots || {},
-      retrieval_tags: variant.layout_metadata?.retrieval_tags || [],
-    },
-  }));
-}
-
-function stylePresetCardsWithIntegratedLayouts() {
-  return allStylePresetCards().map((card) => ({
-    ...card,
-    integrated_layouts: integratedLayoutCardsForPreset(presetByStyleId(card.id)),
-  }));
+  return [...STYLE_PRESETS];
 }
 
 const MIME = {
@@ -1385,7 +1255,7 @@ function presetByStyleId(styleId) {
   if (styleId === MINIMAL_FLAT_PRESET.preset_id) return MINIMAL_FLAT_PRESET;
   if (styleId === REAL_PRODUCT_PRESET.preset_id) return REAL_PRODUCT_PRESET;
   if (styleId === REAL_PERSON_PRESET.preset_id) return REAL_PERSON_PRESET;
-  return loadCustomStylePresets().find((preset) => preset.preset_id === styleId) || null;
+  return null;
 }
 
 function presetForRequest(request) {
@@ -1406,7 +1276,7 @@ function resolveStylePresetId(value) {
     item.id?.toLowerCase() === normalized
   ));
   if (!match) {
-    const error = new Error(`未知或已下线的风格预设：${raw}。可用预设：${cards.map((item) => item.id).join("、")}`);
+    const error = new Error(`未知或已下线的技能：${raw}。可用技能：${cards.map((item) => item.id).join("、")}`);
     error.statusCode = 400;
     throw error;
   }
@@ -1498,10 +1368,22 @@ function activePresetReferenceGroups(preset, request = {}, creativePlan = {}) {
 
 function loadPresetPrinciples(preset) {
   if (!preset?.reference_dir) return { title: "", content: "", summary: "" };
-  const filePath = path.join(STYLE_DIR, preset.reference_dir, "preset.md");
-  const content = readOptionalText(filePath);
+  const legacyPath = path.join(STYLE_DIR, preset.reference_dir, "preset.md");
+  const skillRoot = preset.skill_dir ? path.join(STYLE_DIR, preset.reference_dir, preset.skill_dir) : "";
+  const skillFiles = skillRoot && existsSync(skillRoot)
+    ? [
+        path.join(skillRoot, "SKILL.md"),
+        ...readdirSync(path.join(skillRoot, "references"), { withFileTypes: true })
+          .filter((entry) => entry.isFile() && /\.md$/i.test(entry.name))
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((entry) => path.join(skillRoot, "references", entry.name)),
+      ]
+    : [];
+  const content = skillFiles.length
+    ? skillFiles.map((file) => readOptionalText(file)).filter(Boolean).join("\n\n---\n\n")
+    : readOptionalText(legacyPath);
   return {
-    title: knowledgeTitle(content, `${preset.preset_name || preset.reference_dir}共享原则`),
+    title: knowledgeTitle(content, `${preset.preset_name || preset.reference_dir} Skill`),
     content,
     summary: compactKnowledge(content, 5600),
   };
@@ -3055,117 +2937,6 @@ async function saveUploadedReferenceFile(file, preferredName = "reference") {
   return `/uploads/references/${safeName}`;
 }
 
-async function saveStylePresetImage(file, presetId, preferredName = "style") {
-  validateImageFile(file);
-  const styleId = safeSlug(presetId, "style");
-  const dir = path.join(STYLE_UPLOAD_DIR, styleId);
-  const ext = path.extname(file.filename || "") || ".png";
-  const safeName = `${preferredName}-${Date.now()}${ext}`.replace(/[^\w.-]/g, "_");
-  const key = `uploads/styles/${styleId}/${safeName}`;
-  if (IS_OSS) {
-    await storagePut(key, file.data, { contentType: file.type || "image/png" });
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, safeName), file.data);
-    return { file: safeName, url: `/uploads/styles/${styleId}/${safeName}` };
-  }
-  await mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, safeName);
-  await writeFile(filePath, file.data);
-  return { file: safeName, url: `/uploads/styles/${styleId}/${safeName}` };
-}
-
-async function createCustomStylePreset(fields, files) {
-  const name = textOf(fields.name).trim();
-  if (!name) throw new Error("请填写风格名称");
-  const id = safeSlug(fields.id || name, "style");
-  const existing = loadCustomStylePresets();
-  if (STYLE_PRESETS.some((item) => item.id === id) || existing.some((item) => item.preset_id === id)) {
-    throw new Error(`风格 ID 已存在：${id}`);
-  }
-
-  const referenceFiles = Object.entries(files)
-    .filter(([key, file]) => key.startsWith("reference_image_") && file?.data?.length)
-    .sort(([a], [b]) => Number(a.match(/_(\d+)$/)?.[1] || 0) - Number(b.match(/_(\d+)$/)?.[1] || 0))
-    .map(([, file]) => file);
-  if (!referenceFiles.length) throw new Error("请至少上传 1 张风格参考图");
-
-  const savedReferences = [];
-  for (const [index, file] of referenceFiles.entries()) {
-    savedReferences.push(await saveStylePresetImage(file, id, `reference-${index + 1}`));
-  }
-  const thumbnail = files.thumbnail?.data?.length
-    ? (await saveStylePresetImage(files.thumbnail, id, "thumbnail")).url
-    : savedReferences[0].url;
-
-  let variantConfig = [];
-  if (fields.variants_json) {
-    try {
-      const parsed = JSON.parse(fields.variants_json);
-      variantConfig = Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      throw new Error(`变体 JSON 解析失败：${error.message}`);
-    }
-  }
-
-  const titleVariants = savedReferences.map((image, index) => {
-    const config = variantConfig[index] || {};
-    return {
-      variant_id: safeSlug(config.variant_id || `${id}_variant_${index + 1}`, "variant"),
-      file: image.file,
-      image: image.url,
-      style_name: textOf(config.style_name || `参考图 ${index + 1}`).trim(),
-      features: Array.isArray(config.features)
-        ? config.features
-        : linesOf(config.features || fields.visual_keywords || fields.composition_rules || fields.color_rules || fields.texture_rules || fields.style_group || name),
-      prompt_note: textOf(config.prompt_note || fields.prompt_note).trim(),
-      best_for: Array.isArray(config.best_for) ? config.best_for : linesOf(config.best_for || fields.applicable_categories),
-    };
-  });
-
-  const preset = normalizeCustomStylePreset({
-    custom: true,
-    preset_id: id,
-    id,
-    name,
-    preset_name: `${name}风格预设`,
-    subtitle: fields.subtitle || fields.style_group || "自定义风格",
-    style_group: fields.style_group || name,
-    output_type: fields.output_type || "营销KV / 风格化海报",
-    applicable_categories: linesOf(fields.applicable_categories),
-    visual_keywords: linesOf(fields.visual_keywords || fields.style_group || name),
-    reference_base: "uploads",
-    reference_dir: id,
-    thumbnail,
-    shared_style: {
-      visual_style: linesOf(fields.visual_keywords || fields.style_group || name),
-      composition_rules: linesOf(fields.composition_rules),
-      color_rules: linesOf(fields.color_rules),
-      texture_rules: linesOf(fields.texture_rules),
-      mood: linesOf(fields.mood),
-    },
-    title_style: {
-      style_name: textOf(fields.title_style_name || "参考图标题样式").trim(),
-      features: linesOf(fields.title_style_features),
-      avoid: linesOf(fields.title_style_avoid),
-    },
-    scene_expansion_rules: linesOf(fields.scene_expansion_rules),
-    prompt_note: textOf(fields.prompt_note).trim(),
-    title_variants: titleVariants,
-  });
-
-  const presets = await saveCustomStylePresets([...existing, preset]);
-  return { ok: true, preset, presets, style_presets: allStylePresetCards(), count: presets.length };
-}
-
-async function deleteCustomStylePreset(id) {
-  const styleId = safeSlug(id, "");
-  const existing = loadCustomStylePresets();
-  const target = existing.find((item) => item.preset_id === styleId);
-  if (!target) return null;
-  const presets = await saveCustomStylePresets(existing.filter((item) => item.preset_id !== styleId));
-  return { ok: true, deleted: styleId, presets, style_presets: allStylePresetCards(), count: presets.length };
-}
-
 function runPythonImport(filePath) {
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [path.join(__dirname, "tools", "import_materials.py"), filePath], { cwd: __dirname });
@@ -3604,10 +3375,48 @@ function referenceQueryForRole(creativePlan = {}, group = {}, request = {}) {
   return [textOf(byRole).trim() || fallbackQuery, roleContext, orientationQuery].filter(Boolean).join(" ");
 }
 
+function skillReferenceRoute(preset, request = {}) {
+  const text = [request.campaign_name, request.campaign_subtitle, request.visual_description].filter(Boolean).join(" ").toLowerCase();
+  if (preset?.preset_id === THREE_D_PRESET_ID) {
+    if (/(针织|编织|毛线|织物|线圈|knit|crochet|textile)/i.test(text)) return { id: "3d-knit-textile", label: "针织纺织", rule: "主材质采用针织纺织，保持清晰线圈与柔软结构" };
+    if (/(毛绒|长毛|短绒|毛茸茸|plush|fur|furry)/i.test(text)) return { id: "3d-plush-fur", label: "毛绒", rule: "主材质采用毛绒，控制毛流并保持主体轮廓清晰" };
+    if (/(植绒|flock|flocked)/i.test(text)) return { id: "3d-soft-vinyl-flocked", label: "软胶植绒", rule: "主材质采用软胶植绒，兼顾柔雾表面与稳定体积" };
+    if (/(果冻|透明|半透明|糖果|软胶|凝胶|jelly|gel|vinyl|y2k)/i.test(text)) return { id: "3d-soft-vinyl-jelly", label: "软胶果冻", rule: "主材质采用软胶果冻，统一透明度、边缘与高光" };
+    return { id: "3d-clay", label: "黏土", rule: "未明确材质时使用黏土作为稳定默认；主材质占70%-100%，最多一种次材质且不超过30%" };
+  }
+  if (preset?.preset_id === MINIMAL_FLAT_PRESET_ID) {
+    if (/(马克笔|涂鸦|手绘线|随手画|marker|doodle)/i.test(text)) return { id: "flat-marker-outline-doodle", label: "马克笔轮廓涂鸦", rule: "使用单一马克笔轮廓系统，不混入版画颗粒或立体叠压" };
+    if (/(矢量|清爽|轻盈|现代|简洁|vector|clean|whimsy)/i.test(text)) return { id: "flat-clean-vector-whimsy", label: "清爽矢量", rule: "使用清爽矢量边缘与低复杂度色块" };
+    if (/(胶版|叠压|套印|浮雕|relief|layered|overprint)/i.test(text)) return { id: "flat-layered-print-relief", label: "胶版叠压", rule: "使用胶版叠压的有限层级，不混用贴纸白边" };
+    if (/(贴纸|拼贴|剪贴|有机|sticker|collage)/i.test(text)) return { id: "flat-sticker-collage-grain", label: "贴纸拼贴", rule: "使用贴纸拼贴轮廓与统一颗粒系统" };
+    return { id: "flat-blocky-grain-geometric", label: "几何颗粒版画", rule: "未明确风格时使用几何颗粒版画；主风格占80%-100%，最多一种次风格" };
+  }
+  return null;
+}
+
+function applySkillRoutingToDesign(design, preset, request) {
+  const route = skillReferenceRoute(preset, request);
+  if (!route) return design;
+  return {
+    ...design,
+    skill_routing: route,
+    material_keywords: [...new Set([
+      ...(Array.isArray(design.material_keywords) ? design.material_keywords : linesOf(design.material_keywords)),
+      route.label,
+      route.rule,
+    ])],
+  };
+}
+
 function rankPresetReferenceCandidates(preset, group, request, creativePlan) {
   const query = referenceQueryForRole(creativePlan, group, request);
   const orientation = compositionOrientation(request.image_size);
   let variants = loadPresetReferenceGroup(preset, group);
+  const route = group.id === "style" ? skillReferenceRoute(preset, request) : null;
+  if (route) {
+    const routed = variants.filter((item) => `${item.file} ${item.variant_id}`.includes(route.id));
+    if (routed.length) variants = routed;
+  }
   if (["layout", "integrated_layout"].includes(group.id)) {
     const matched = variants.filter((item) => item.composition_orientation === orientation);
     if (matched.length) variants = matched;
@@ -3643,7 +3452,7 @@ function rankPresetReferenceCandidates(preset, group, request, creativePlan) {
         ...variant,
         semantic_score: Math.max(0, Math.min(1, semanticScore + orientationBonus + slotBonus + titleFit + tagScore)),
         contextual_tiebreak: stableUnitHash(`${query}|${variant.variant_id}`),
-        selection_query: query,
+        selection_query: [route ? `${route.label}：${route.rule}` : "", query].filter(Boolean).join("；"),
       };
     })
     .sort((a, b) => {
@@ -4638,7 +4447,7 @@ function validateExpandRequest(body) {
     visual_description: visualDescription,
     image_size: SIZE_MAP[body.image_size] ? body.image_size : "3:4",
     style_preset: stylePreset,
-    integrated_layout_variant: textOf(body.integrated_layout_variant).trim(),
+    integrated_layout_variant: "",
     reference_labels: Array.isArray(body.reference_labels) ? body.reference_labels : [],
     doudou_ip: isDoudouEnabled(body),
     include_logo: booleanPreference(body.include_logo, false),
@@ -5227,9 +5036,64 @@ function hasExplicitUploadedSubjectBinding(request, index = 0) {
   });
 }
 
+const UPLOADED_REFERENCE_ROLES = new Set(["产品主体", "人物主体", "字体", "构图", "风格", "补充参考"]);
+
+function classifiedUploadedReference(request, index = 0) {
+  const item = Array.isArray(request.reference_classifications) ? request.reference_classifications[index] : null;
+  const role = textOf(item?.role).trim();
+  return UPLOADED_REFERENCE_ROLES.has(role) ? { ...item, role } : null;
+}
+
+async function classifyUploadedReferencesWithAi(request) {
+  const uploaded = request.uploaded_references || [];
+  if (!uploaded.length) return [];
+  const fallback = uploaded.map((_, index) => {
+    const localRole = uploadedReferenceRole({ ...request, reference_classifications: [] }, index);
+    const subjectKind = uploadedReferenceSubjectKind({ ...request, reference_classifications: [] }, index);
+    const role = localRole === "主体"
+      ? subjectKind === "人物" ? "人物主体" : subjectKind === "产品" ? "产品主体" : "补充参考"
+      : localRole;
+    return { index: index + 1, label: request.reference_labels?.[index] || `图${index + 1}`, role, reason: "本地语义规则" };
+  });
+  if (!OPENAI_API_KEY) return fallback;
+  const images = uploaded.flatMap((image, index) => {
+    const local = materialImagePath(textOf(image).trim());
+    if (!local?.file || !existsSync(local.file)) return [];
+    return [{ path: local.file, label: `图${index + 1}（${request.reference_labels?.[index] || `图${index + 1}`}）`, detail: "high" }];
+  });
+  try {
+    const result = await callResponses({
+      system: [
+        "你负责判断营销KV技能模式中每张用户参考图的用途。",
+        "只允许：产品主体、人物主体、字体、构图、风格、补充参考。",
+        "判断主要依据是用户描述中 @图N 附近的用途表达，图片内容只辅助消歧。",
+        "只有用户明确表达该图作为产品/商品/包装主体时才能标为产品主体；明确表达人物/模特作为主体时才能标为人物主体。",
+        "仅出现 @图N 而没有用途，或用途不明确时必须标为补充参考，绝不能默认主体。",
+        "返回JSON：{\"references\":[{\"index\":1,\"role\":\"补充参考\",\"reason\":\"...\"}]}，顺序和数量必须与输入图片一致。",
+      ].join("\n"),
+      user: `用户原始描述：\n${request.visual_description}\n\n参考图标签：${uploaded.map((_, index) => `图${index + 1}=${request.reference_labels?.[index] || `图${index + 1}`}`).join("；")}`,
+      expectJson: true,
+      images,
+      maxOutputTokens: 1400,
+    });
+    const byIndex = new Map((result?.references || []).map((item) => [Number(item.index), item]));
+    return fallback.map((item, index) => {
+      const classified = byIndex.get(index + 1);
+      const role = textOf(classified?.role).trim();
+      return UPLOADED_REFERENCE_ROLES.has(role)
+        ? { ...item, role, reason: textOf(classified.reason).trim() || "AI语义判断" }
+        : item;
+    });
+  } catch {
+    return fallback;
+  }
+}
+
 function uploadedReferenceRole(request, index = 0) {
+  const classified = classifiedUploadedReference(request, index);
+  if (classified?.role === "产品主体" || classified?.role === "人物主体") return "主体";
+  if (classified) return classified.role;
   const scopedText = uploadedReferenceScopeText(request, index);
-  const hasMention = uploadedReferenceMentionInfo(request, index).length > 0;
   // Explicit identity binding always wins. Nearby words such as "主体位置",
   // "构图", "自然光" or "氛围" describe how that subject should be staged;
   // they must not turn the uploaded object into a layout or style reference.
@@ -5238,15 +5102,14 @@ function uploadedReferenceRole(request, index = 0) {
   if (/(构图|版式|布局|画面结构|空间关系|透视|主体位置|信息区|画面层级|参考构图|参考版式)/.test(scopedText)) return "构图";
   if (/(?:作为|用作|仅作|只作|参考|用于).{0,24}(?:风格|氛围|色彩|调性|质感|光影)|(?:风格|氛围|色彩|调性|质感|光影).{0,16}(?:参考|用途|使用)/.test(scopedText)) return "风格";
   if (/(人物|人像|女生|男生|模特|主视觉人物|主体人物|作为主体|作为主视觉|主体\s*(?:为|是)|主视觉\s*(?:为|是)|主角\s*(?:为|是)|产品|商品|包装|瓶|盒|杯|罐|设备|物品|对象|主视觉产品|主体产品)/.test(scopedText)) return "主体";
-  // A direct @ mention defaults to subject usage unless the user explicitly
-  // labels it as font, composition, or style above. Ambient words such as
-  // "光影" and "氛围" must not silently downgrade the uploaded object to style.
-  if (hasMention) return "主体";
   if (/(风格|氛围|色彩|调性|质感|光影|参考整体)/.test(scopedText)) return "风格";
   return "补充参考";
 }
 
 function uploadedReferenceSubjectKind(request, index = 0) {
+  const classified = classifiedUploadedReference(request, index);
+  if (classified?.role === "人物主体") return "人物";
+  if (classified?.role === "产品主体") return "产品";
   const scopedText = uploadedReferenceScopeText(request, index);
   if (/(人物|人像|女生|男生|模特|主视觉人物|主体人物|这个人|角色)/.test(scopedText)) return "人物";
   if (/(产品|商品|包装|瓶|盒|杯|罐|设备|物品|对象|主视觉产品|主体产品)/.test(scopedText)) return "产品";
@@ -5865,6 +5728,84 @@ function outputReference(url, number, description, localImage = url, objectKey =
   };
 }
 
+async function saveGeneratedImageFile({
+  b64,
+  prompt,
+  size,
+  prefix,
+  referenceImages = [],
+  applyOverlay = false,
+  overlayRequest = {},
+  keepTemp = false,
+}) {
+  const filename = `${prefix || "asset"}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.png`;
+  const key = outputKey(filename);
+  if (IS_OSS) {
+    const tempPath = path.join(RUNTIME_ROOT, "tmp", filename);
+    await mkdir(path.dirname(tempPath), { recursive: true });
+    await writeFile(tempPath, Buffer.from(b64, "base64"));
+    const brandOverlay = applyOverlay ? await applyLogoOverlay(tempPath, overlayRequest) : null;
+    const finalBytes = await readFile(tempPath);
+    await storagePut(key, finalBytes, { contentType: "image/png" });
+    if (!keepTemp) await unlink(tempPath).catch(() => {});
+    return {
+      skipped: false,
+      name: filename,
+      url: storageSignUrl(key),
+      object_key: key,
+      output_path: "",
+      temp_path: keepTemp ? tempPath : "",
+      size: size || "1024x1024",
+      prompt,
+      reference_images: referenceImages,
+      logo_overlay: brandOverlay?.logo_overlay || null,
+      search_overlay: brandOverlay?.search_overlay || null,
+    };
+  }
+  await mkdir(OUTPUT_DIR, { recursive: true });
+  const outputPath = path.join(OUTPUT_DIR, filename);
+  await writeFile(outputPath, Buffer.from(b64, "base64"));
+  const brandOverlay = applyOverlay ? await applyLogoOverlay(outputPath, overlayRequest) : null;
+  return {
+    skipped: false,
+    name: filename,
+    url: `/outputs/${filename}`,
+    object_key: key,
+    output_path: outputPath,
+    temp_path: "",
+    size: size || "1024x1024",
+    prompt,
+    reference_images: referenceImages,
+    logo_overlay: brandOverlay?.logo_overlay || null,
+    search_overlay: brandOverlay?.search_overlay || null,
+  };
+}
+
+async function generateImageFile({ prompt, size, prefix = "kv-free" }) {
+  if (!OPENAI_API_KEY) {
+    return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
+  }
+  const response = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: IMAGE_MODEL,
+      prompt,
+      size: size || "1024x1024",
+      quality: "medium",
+      output_format: "png",
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error?.message || `OpenAI Images API 请求失败：${response.status}`);
+  const b64 = payload.data?.[0]?.b64_json;
+  if (!b64) throw new Error("Images API 没有返回 b64_json");
+  return saveGeneratedImageFile({ b64, prompt, size, prefix });
+}
+
 async function generateImageEditFile({
   prompt,
   selected,
@@ -5906,49 +5847,16 @@ async function generateImageEditFile({
 
   const b64 = payload.data?.[0]?.b64_json;
   if (!b64) throw new Error("Images API 没有返回 b64_json");
-  const filename = `${prefix || "asset"}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.png`;
-  const key = outputKey(filename);
-  if (IS_OSS) {
-    const tempPath = path.join(RUNTIME_ROOT, "tmp", filename);
-    await mkdir(path.dirname(tempPath), { recursive: true });
-    await writeFile(tempPath, Buffer.from(b64, "base64"));
-    const brandOverlay = applyOverlay ? await applyLogoOverlay(tempPath, overlayRequest) : null;
-    const finalBytes = await readFile(tempPath);
-    await storagePut(key, finalBytes, { contentType: "image/png" });
-    if (!keepTemp) await unlink(tempPath).catch(() => {});
-    return {
-      skipped: false,
-      name: filename,
-      url: storageSignUrl(key),
-      object_key: key,
-      output_path: "",
-      temp_path: keepTemp ? tempPath : "",
-      size: size || "1024x1024",
-      prompt,
-      reference_images: selected.map((item) => item.number),
-      logo_overlay: brandOverlay?.logo_overlay || null,
-      search_overlay: brandOverlay?.search_overlay || null,
-    };
-  }
-  await mkdir(OUTPUT_DIR, { recursive: true });
-  const outputPath = path.join(OUTPUT_DIR, filename);
-  await writeFile(outputPath, Buffer.from(b64, "base64"));
-  const brandOverlay = applyOverlay ? await applyLogoOverlay(outputPath, overlayRequest) : null;
-  const searchOverlay = brandOverlay?.search_overlay || null;
-  const logoOverlay = brandOverlay?.logo_overlay || null;
-  return {
-    skipped: false,
-    name: filename,
-    url: `/outputs/${filename}`,
-    object_key: key,
-    output_path: outputPath,
-    temp_path: "",
-    size: size || "1024x1024",
+  return saveGeneratedImageFile({
+    b64,
     prompt,
-    reference_images: selected.map((item) => item.number),
-    logo_overlay: logoOverlay,
-    search_overlay: searchOverlay,
-  };
+    size,
+    prefix,
+    referenceImages: selected.map((item) => item.number),
+    applyOverlay,
+    overlayRequest,
+    keepTemp,
+  });
 }
 
 async function makeTitleTransparent(sourcePath) {
@@ -6506,6 +6414,74 @@ async function runCanvasEditPipeline(request, onStage, pipelineStartedAt) {
   return result;
 }
 
+async function runFreeGenerationPipeline(request, onStage, pipelineStartedAt) {
+  const prompt = request.visual_description;
+  const uploaded = request.uploaded_references || [];
+  const mode = uploaded.length ? "free-image-edit" : "free-text-to-image";
+  onStage("status", {
+    message: uploaded.length
+      ? `自由模式：正在按上传顺序使用 ${uploaded.length} 张参考图生成...`
+      : "自由模式：正在根据原始描述生成图片...",
+  });
+  onStage("prompt", { final_prompt: prompt, source: "user-original" });
+  let generated;
+  if (!request.generate_image) {
+    generated = { skipped: true, reason: "未勾选生成图片。" };
+  } else if (uploaded.length === 0) {
+    generated = await generateImageFile({
+      prompt,
+      size: SIZE_MAP[request.image_size] || "1024x1024",
+      prefix: "kv-free-generate",
+    });
+  } else {
+    const selected = uploaded.map((url, index) => ({
+      type: "用户上传",
+      source: "用户上传",
+      role: "自由模式输入",
+      number: `USER_${index + 1}`,
+      label: request.reference_labels?.[index] || `图${index + 1}`,
+      image: url,
+      local_image: url,
+      image_url: "",
+      object_key: objectKeyFromUrl(url),
+      description: "按用户原始 Prompt 中的 @图N 指令使用，未指定用途时不擅自改写用途。",
+    }));
+    generated = await generateImageEditFile({
+      prompt,
+      selected,
+      size: SIZE_MAP[request.image_size] || "1024x1024",
+      prefix: "kv-free-edit",
+      applyOverlay: false,
+    });
+  }
+  const imageResult = generated.skipped
+    ? generated
+    : { ...publicImageLayer(generated), generation_mode: mode };
+  if (!imageResult.skipped) onStage("scene", { scene_layer: imageResult });
+  onStage("image", { image_result: imageResult });
+  const result = {
+    request,
+    final_prompt: prompt,
+    image_result: imageResult,
+    quality_review: { source: "free-mode", decision: "deferred" },
+    warnings: [],
+    models: { text: null, image: IMAGE_MODEL },
+    performance: {
+      mode,
+      target_ms: 180000,
+      total_ms: Date.now() - pipelineStartedAt,
+      stages: {},
+      llm_policy: { prompt: "user-original", text_rewrite: false, image_route: uploaded.length ? "edit" : "generate" },
+    },
+  };
+  if (!imageResult.skipped) {
+    await persistAssetRecord(result);
+    if (request.project_id) await appendGenerationToProject(request.project_id, result);
+  }
+  onStage("complete", result);
+  return result;
+}
+
 async function runPipeline(request, onStage = () => {}) {
   const pipelineStartedAt = Date.now();
   if (request.edit_mode) {
@@ -6513,6 +6489,9 @@ async function runPipeline(request, onStage = () => {}) {
       throw httpError(400, "继续编辑需要有效的项目和选中图片");
     }
     return runCanvasEditPipeline(request, onStage, pipelineStartedAt);
+  }
+  if (request.style_preset === NO_PRESET_ID) {
+    return runFreeGenerationPipeline(request, onStage, pipelineStartedAt);
   }
   const stageTimings = {};
   const measure = async (stage, task) => {
@@ -6533,6 +6512,14 @@ async function runPipeline(request, onStage = () => {}) {
   const knowledge = productionKnowledgeForRequest(request, activePreset);
   const warnings = [];
   let fallback = false;
+
+  if (activePreset && request.uploaded_references?.length) {
+    onStage("status", { message: "正在判断每张参考图在当前技能中的用途..." });
+    request.reference_classifications = await measure(
+      "reference_role_classification",
+      () => classifyUploadedReferencesWithAi(request),
+    );
+  }
 
   onStage("status", { message: ENABLE_BRIEF_LLM ? "正在理解 Brief..." : "正在快速整理 Brief..." });
   let brief = localBrief(request);
@@ -6603,7 +6590,11 @@ async function runPipeline(request, onStage = () => {}) {
   let initialDesign = buildPresetDesign(request, brief, selectedPresetVariant, activePreset);
   initialDesign = applyCreativePlanToDesign(initialDesign, creativePlan);
   initialDesign = applyIntegratedLayoutToDesign(initialDesign, selectedPresetVariant, request);
-  initialDesign = sanitizeDesignForRequest(request, applyDoudouToDesign(request, initialDesign));
+  initialDesign = applySkillRoutingToDesign(
+    sanitizeDesignForRequest(request, applyDoudouToDesign(request, initialDesign)),
+    activePreset,
+    request,
+  );
   const initialDoudouReferences = selectDoudouReferences(request, initialDesign);
 
   onStage("status", { message: "正在把选定创意与参考图转成可执行设计大纲..." });
@@ -6661,7 +6652,11 @@ async function runPipeline(request, onStage = () => {}) {
   }
   design = applyCreativePlanToDesign(design, creativePlan);
   design = applyIntegratedLayoutToDesign(design, selectedPresetVariant, request);
-  design = sanitizeDesignForRequest(request, applyDoudouToDesign(request, design));
+  design = applySkillRoutingToDesign(
+    sanitizeDesignForRequest(request, applyDoudouToDesign(request, design)),
+    activePreset,
+    request,
+  );
   const doudouReferences = selectDoudouReferences(request, design);
   const promptReferences = prioritizeGenerationReferences([...presetReferences, ...doudouReferences, ...uploadedReferences]);
 
@@ -6669,7 +6664,11 @@ async function runPipeline(request, onStage = () => {}) {
   const preflightReview = await measure("preflight_review", () => reviewDesignPreflight(request, brief, creativePlan, design, promptReferences, knowledge));
   design = applyCreativePlanToDesign(applyPreflightDesignPatch(design, preflightReview), creativePlan);
   design = applyIntegratedLayoutToDesign(design, selectedPresetVariant, request);
-  design = sanitizeDesignForRequest(request, applyDoudouToDesign(request, design));
+  design = applySkillRoutingToDesign(
+    sanitizeDesignForRequest(request, applyDoudouToDesign(request, design)),
+    activePreset,
+    request,
+  );
   onStage("design", { design });
   onStage("preflight", { preflight_review: preflightReview });
   onStage("materials", { selected_materials: promptReferences });
@@ -6942,30 +6941,8 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/api/style-presets") {
       jsonResponse(res, 200, decorateUploadUrls({
-        presets: stylePresetCardsWithIntegratedLayouts(),
-        custom_presets: loadCustomStylePresets(),
+        presets: allStylePresetCards(),
       }));
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/style-presets/add") {
-      if (!requireAdmin(req, res)) return;
-      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
-      const { fields, files } = await readMultipart(req);
-      jsonResponse(res, 200, decorateUploadUrls(await createCustomStylePreset(fields, files)));
-      return;
-    }
-
-    if (req.method === "DELETE" && url.pathname.startsWith("/api/style-presets/")) {
-      if (!requireAdmin(req, res)) return;
-      if (!applyRateLimit(req, res, RATE_LIMIT_WRITE_PER_MIN)) return;
-      const id = decodeURIComponent(url.pathname.replace("/api/style-presets/", "")).trim();
-      const result = await deleteCustomStylePreset(id);
-      if (!result) {
-        jsonResponse(res, 404, { error: "未找到可删除的自定义风格" });
-        return;
-      }
-      jsonResponse(res, 200, decorateUploadUrls(result));
       return;
     }
 
@@ -7382,11 +7359,6 @@ const server = createServer(async (req, res) => {
   }
 });
 
-try {
-  await hydrateCustomStylePresets();
-} catch (error) {
-  console.warn(`自定义风格预设读取失败：${error.message}`);
-}
 server.listen(PORT, () => {
   console.log(`KV Reference Prompt Studio running at http://localhost:${PORT}`);
 });

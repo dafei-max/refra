@@ -103,7 +103,7 @@ const stageAccordions = document.querySelector("#stageAccordions");
 const campaignNameInput = document.querySelector("#campaignNameInput");
 const campaignSubtitleInput = document.querySelector("#campaignSubtitleInput");
 const campaignTimeInput = document.querySelector("#campaignTimeInput");
-const styleFolderInput = document.querySelector("#styleFolderInput");
+const briefTopRow = document.querySelector("#briefTopRow");
 const materialDetailModal = document.querySelector("#materialDetailModal");
 const materialDetailImage = document.querySelector("#materialDetailImage");
 const materialDetailType = document.querySelector("#materialDetailType");
@@ -155,7 +155,6 @@ const LEGACY_MATERIAL_ROLES = {
 let allMaterials = [];
 let canvasAppLoadPromise = null;
 let allStylePresets = [];
-let activeIntegratedLayoutTab = "vertical";
 let activeMaterialTab = "全部";
 let referenceFiles = [];
 let nextReferenceNumber = 1;
@@ -318,57 +317,38 @@ function openProjectInNewTab(projectId) {
 }
 
 function styleNameShort(name) {
-  return String(name || "").replace("手绘", "").replace("风格", "").replace("预设", "").trim();
-}
-
-function normalizedLayoutOrientation(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (["horizontal", "landscape", "横版"].includes(normalized)) return "horizontal";
-  if (["vertical", "portrait", "竖版"].includes(normalized)) return "vertical";
-  return "";
-}
-
-function preferredLayoutTabForSize(value = imageSizeInput.value) {
-  return ["16:9", "4:3"].includes(value) ? "horizontal" : "vertical";
+  return String(name || "").trim();
 }
 
 function selectedStylePreset() {
   return allStylePresets.find((item) => item.id === (stylePresetInput.value || "none")) || null;
 }
 
-function integratedLayoutsForPreset(preset = selectedStylePreset()) {
-  return Array.isArray(preset?.integrated_layouts) ? preset.integrated_layouts : [];
-}
-
-function selectedIntegratedLayout(preset = selectedStylePreset()) {
-  const selectedId = integratedLayoutInput.value.trim();
-  return integratedLayoutsForPreset(preset).find((item) => item.variant_id === selectedId) || null;
-}
-
 function syncStylePickerButton() {
   const current = stylePresetInput.value || "none";
   const preset = allStylePresets.find((item) => item.id === current);
   const isPreset = preset && preset.id !== "none";
-  stylePickerIcon.src = isPreset && preset.thumbnail ? preset.thumbnail : "/ui-assets/fengge.png";
-  stylePickerIcon.alt = isPreset ? preset.name : "";
-  stylePickerIcon.classList.toggle("preset-thumb", Boolean(isPreset && preset.thumbnail));
-  stylePickerLabel.textContent = isPreset ? styleNameShort(preset.name) : "风格预设";
+  stylePickerIcon.src = "/ui-assets/icon/skill.svg";
+  stylePickerIcon.alt = "";
+  stylePickerIcon.classList.remove("preset-thumb");
+  stylePickerLabel.textContent = isPreset ? styleNameShort(preset.name) : "技能";
+  briefTopRow?.classList.toggle("hidden", !isPreset);
   window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
 }
 
 function setSelectedStyle(id) {
-  const nextId = id || "none";
-  if (stylePresetInput.value !== nextId) integratedLayoutInput.value = "";
+  const requestedId = id || "none";
+  const nextId = requestedId === stylePresetInput.value ? "none" : requestedId;
   stylePresetInput.value = nextId;
-  activeIntegratedLayoutTab = preferredLayoutTabForSize();
-  const availableOrientations = new Set(
-    integratedLayoutsForPreset().map((item) => normalizedLayoutOrientation(item.orientation)).filter(Boolean),
-  );
-  if (availableOrientations.size && !availableOrientations.has(activeIntegratedLayoutTab)) {
-    activeIntegratedLayoutTab = availableOrientations.has("vertical") ? "vertical" : "horizontal";
+  integratedLayoutInput.value = "";
+  if (nextId === "none") {
+    campaignNameInput.value = "";
+    campaignSubtitleInput.value = "";
+    campaignTimeInput.value = "";
   }
   renderStylePresetCards();
   syncStylePickerButton();
+  closeStylePresetModal();
 }
 
 function closeStylePresetModal() {
@@ -376,42 +356,32 @@ function closeStylePresetModal() {
 }
 
 function openStylePresetModal() {
-  const selectedLayout = selectedIntegratedLayout();
-  activeIntegratedLayoutTab = normalizedLayoutOrientation(selectedLayout?.orientation)
-    || preferredLayoutTabForSize();
   renderStylePresetCards();
   stylePresetSection.classList.remove("hidden");
 }
 
 function renderStylePresetCards() {
   const current = stylePresetInput.value || "none";
-  const preset = selectedStylePreset();
-  const layouts = integratedLayoutsForPreset(preset);
-  const selectedLayoutId = integratedLayoutInput.value.trim();
-  const tabLayouts = layouts.filter((item) => normalizedLayoutOrientation(item.orientation) === activeIntegratedLayoutTab);
-  const hasHorizontal = layouts.some((item) => normalizedLayoutOrientation(item.orientation) === "horizontal");
-  const hasVertical = layouts.some((item) => normalizedLayoutOrientation(item.orientation) === "vertical");
+  const skills = allStylePresets.filter((item) => item.id !== "none");
   stylePresetSection.innerHTML = `
-    <div class="style-modal-panel" role="dialog" aria-modal="true" aria-label="选择风格与整合版式">
+    <div class="style-modal-panel" role="dialog" aria-modal="true" aria-label="选择技能">
       <header class="style-modal-header">
-        <h2>风格</h2>
+        <h2>技能</h2>
         <button type="button" class="style-modal-close" data-close-style-modal aria-label="关闭">
           <img src="/ui-assets/style-modal-close.png" alt="" aria-hidden="true" />
         </button>
       </header>
       <div class="style-modal-scroll">
         <div class="style-modal-grid">
-          ${allStylePresets
+          ${skills
             .map((item) => {
               const selected = item.id === current;
-              const media = item.thumbnail
-                ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" />`
-                : `<span class="empty-preset">无预设</span>`;
+              const media = item.thumbnail ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" />` : "";
               return `
                 <article class="style-modal-card${selected ? " selected" : ""}">
                   <div class="style-modal-media">
                     ${media}
-                    <button type="button" class="style-apply-button" data-style-preset="${escapeHtml(item.id)}">应用</button>
+                    <button type="button" class="style-apply-button" data-style-preset="${escapeHtml(item.id)}">${selected ? "取消技能" : "使用技能"}</button>
                   </div>
                   <strong>${escapeHtml(styleNameShort(item.name))}</strong>
                   <p>${escapeHtml(item.subtitle || "")}</p>
@@ -420,29 +390,6 @@ function renderStylePresetCards() {
             })
             .join("")}
         </div>
-        ${preset && preset.id !== "none" && layouts.length
-          ? `
-            <section class="integrated-layout-section">
-              <h3>整合版式</h3>
-              <div class="integrated-layout-tabs" role="tablist" aria-label="版式方向">
-                <button type="button" class="${activeIntegratedLayoutTab === "horizontal" ? "active" : ""}" data-layout-tab="horizontal"${hasHorizontal ? "" : " disabled"}>横版</button>
-                <button type="button" class="${activeIntegratedLayoutTab === "vertical" ? "active" : ""}" data-layout-tab="vertical"${hasVertical ? "" : " disabled"}>竖版</button>
-              </div>
-              <div class="integrated-layout-grid ${activeIntegratedLayoutTab}">
-                ${tabLayouts.length
-                  ? tabLayouts.map((item) => `
-                      <article class="integrated-layout-card${item.variant_id === selectedLayoutId ? " selected" : ""}">
-                        <div class="integrated-layout-media">
-                          <img src="${item.image}" alt="${escapeHtml(item.style_name || "整合版式")}" />
-                          <button type="button" class="layout-apply-button" data-integrated-layout="${escapeHtml(item.variant_id)}">应用</button>
-                        </div>
-                      </article>
-                    `).join("")
-                  : `<p class="integrated-layout-empty">当前风格暂无${activeIntegratedLayoutTab === "horizontal" ? "横版" : "竖版"}参考图</p>`}
-              </div>
-            </section>
-          `
-          : ""}
       </div>
     </div>
   `;
@@ -451,19 +398,6 @@ function renderStylePresetCards() {
   stylePresetSection.querySelectorAll("[data-style-preset]").forEach((button) => {
     button.addEventListener("click", () => {
       setSelectedStyle(button.dataset.stylePreset || "none");
-    });
-  });
-  stylePresetSection.querySelectorAll("[data-layout-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      activeIntegratedLayoutTab = button.dataset.layoutTab || "vertical";
-      renderStylePresetCards();
-    });
-  });
-  stylePresetSection.querySelectorAll("[data-integrated-layout]").forEach((button) => {
-    button.addEventListener("click", () => {
-      integratedLayoutInput.value = button.dataset.integratedLayout || "";
-      renderStylePresetCards();
-      closeStylePresetModal();
     });
   });
 }
@@ -497,8 +431,6 @@ function setImageSize(value) {
   sizeText.textContent = value;
   sizeIcon.className = `size-icon ratio-${value.replace(":", "")}`;
   renderSizePicker();
-  if (!integratedLayoutInput.value) activeIntegratedLayoutTab = preferredLayoutTabForSize(value);
-  if (!stylePresetSection.classList.contains("hidden")) renderStylePresetCards();
   window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
 }
 
@@ -1340,12 +1272,7 @@ function renderStyleList() {
         `,
       )
       .join("")}
-    <button type="button" class="style-manage-card add-style-card" id="addStyleFolderButton">
-      <span>+</span>
-      <strong>新增风格</strong>
-    </button>
   `;
-  document.querySelector("#addStyleFolderButton")?.addEventListener("click", () => styleFolderInput.click());
 }
 
 async function loadStyles() {
@@ -1354,72 +1281,11 @@ async function loadStyles() {
   if (!response.ok) throw new Error(payload.error || "读取风格失败");
   allStylePresets = payload.presets || [];
   if (!allStylePresets.some((item) => item.id === stylePresetInput.value)) stylePresetInput.value = "none";
-  if (!selectedIntegratedLayout()) integratedLayoutInput.value = "";
+  integratedLayoutInput.value = "";
   renderStylePresetCards();
   renderStyleList();
   syncStylePickerButton();
   return allStylePresets;
-}
-
-function readTextFile(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => resolve("");
-    reader.readAsText(file, "utf-8");
-  });
-}
-
-function pathParts(file) {
-  return (file.webkitRelativePath || file.name).split("/").filter(Boolean);
-}
-
-async function importStyleFolder(files) {
-  const list = Array.from(files || []);
-  if (!list.length) return;
-  styleMessage.textContent = "正在解析风格文件夹...";
-  const root = pathParts(list[0])[0] || "新风格";
-  const images = list.filter((file) => /^image\//.test(file.type));
-  const texts = list.filter((file) => /\.(txt|md)$/i.test(file.name));
-  if (!images.length) {
-    styleMessage.textContent = "文件夹里至少需要一张图片。";
-    return;
-  }
-  const textBuckets = { font: [], style: [] };
-  for (const file of texts) {
-    const parts = pathParts(file);
-    if (parts.some((part) => part.includes("排版"))) continue;
-    const group = parts.some((part) => part.includes("字体"))
-      ? "font"
-      : "style";
-    textBuckets[group].push(await readTextFile(file));
-  }
-  const sortedImages = images.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, "zh-Hans-CN"));
-  const styleImage = sortedImages.find((file) => pathParts(file).some((part) => part.includes("风格"))) || sortedImages[0];
-  const body = new FormData();
-  body.append("name", root);
-  body.append("subtitle", "文件夹导入风格");
-  body.append("visual_keywords", textBuckets.style.join("\n") || root);
-  body.append("composition_rules", "");
-  body.append("title_style_features", textBuckets.font.join("\n"));
-  body.append("texture_rules", textBuckets.style.join("\n"));
-  body.append("scene_expansion_rules", ["画面要有留白，不做过多细碎内容", "严禁增加无关文字信息", "如果提到时间，一定要和标题字体做在一块儿"].join("\n"));
-  body.append("thumbnail", styleImage);
-  sortedImages.forEach((file, index) => body.append(`reference_image_${index}`, file));
-  try {
-    const response = await apiFetch("/api/style-presets/add", { method: "POST", body });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "保存失败");
-    allStylePresets = payload.style_presets || [];
-    stylePresetInput.value = payload.preset?.preset_id || stylePresetInput.value;
-    renderStylePresetCards();
-    renderStyleList();
-    styleMessage.textContent = `已保存 ${payload.preset?.name || root}`;
-  } catch (error) {
-    styleMessage.textContent = error.message;
-  } finally {
-    styleFolderInput.value = "";
-  }
 }
 
 function inspirationProxyUrl(url) {
@@ -1794,6 +1660,9 @@ function closeMaterialDetail() {
 
 async function boot() {
   try {
+    stylePresetInput.value = "none";
+    integratedLayoutInput.value = "";
+    syncStylePickerButton();
     renderSizePicker();
     runButton.classList.toggle("active", visualDescriptionInput.value.trim().length > 0);
     const initialProjectId = new URLSearchParams(window.location.search).get("projectId")?.trim();
@@ -2147,14 +2016,14 @@ window.__getCanvasSettings = () => ({
   doudou_ip: /兜兜/.test(String(window.__canvasPromptValue || visualDescriptionInput.value)),
   include_logo: isToolToggleEnabled(includeLogoButton),
   include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
-  style_name: stylePickerLabel.textContent || "风格预设",
+  style_name: stylePickerLabel.textContent || "技能",
 });
 
 window.__applyCanvasSettings = (settings = {}) => {
   if (settings.image_size) setImageSize(settings.image_size);
   if (settings.style_preset) {
     stylePresetInput.value = settings.style_preset;
-    integratedLayoutInput.value = settings.integrated_layout_variant || "";
+    integratedLayoutInput.value = "";
     syncStylePickerButton();
   }
   if (typeof settings.doudou_ip === "boolean") {
@@ -2493,7 +2362,6 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !inspirationPreviewModal.classList.contains("hidden")) closeInspirationPreview();
 });
 
-styleFolderInput.addEventListener("change", () => importStyleFolder(styleFolderInput.files));
 materialDetailModal.querySelectorAll("[data-close-material-detail]").forEach((node) => node.addEventListener("click", closeMaterialDetail));
 materialUseReferenceButton.addEventListener("click", async () => {
   const item = activeMaterial;

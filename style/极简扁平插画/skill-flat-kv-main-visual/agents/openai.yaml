@@ -1,0 +1,14 @@
+interface:
+  display_name: 扁平 KV 主视觉设计
+  short_description: 自动路由五类扁平风格，设计关系优先的营销 KV 主视觉
+  default_prompt: Use $design-flat-kv-main-visual to select one of five flat styles,
+    match the reference, design the KV relationship, and generate the main visual.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

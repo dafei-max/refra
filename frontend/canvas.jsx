@@ -129,7 +129,7 @@ function CanvasApp() {
   const [session, setSession] = useState(null);
   const [title, setTitle] = useState("Untitled");
   const [editingTitle, setEditingTitle] = useState(false);
-  const [composerSettings, setComposerSettings] = useState({ image_size: "3:4", style_name: "风格预设" });
+  const [composerSettings, setComposerSettings] = useState({ image_size: "3:4", style_name: "技能" });
   const [flowInstance, setFlowInstance] = useState(null);
   const [composerHasText, setComposerHasText] = useState(false);
   const [composerReferences, setComposerReferences] = useState([]);
@@ -529,7 +529,7 @@ function CanvasApp() {
       setComposerReferences(window.__getReferencePreviews?.() || []);
       const project = init?.project || null;
       setTitle(project?.title || "Untitled");
-      setComposerSettings({ image_size: "3:4", style_name: "风格预设", ...(project?.settings || {}) });
+      setComposerSettings({ image_size: "3:4", style_name: "技能", ...(project?.settings || {}) });
       window.__applyCanvasSettings?.(project?.settings || {});
       const labels = { typography: "第一步版式图", kv: "完整 KV", title: "标题图层", background: "背景图层" };
       const restored = (project?.elements || []).map((element, index) => ({
@@ -854,7 +854,7 @@ function CanvasApp() {
             )}
             <div className="cf-composer-tools">
               <button type="button" className="cf-composer-upload" title="上传参考图" onClick={invokeTool("upload")}><img src="/ui-assets/icon/canvas-upload.png" alt="" /></button>
-              <button type="button" onClick={invokeTool("style")}><img src="/ui-assets/fengge.png" alt="" />{composerSettings.style_name || "风格预设"}</button>
+              <button type="button" onClick={invokeTool("style")}><img src="/ui-assets/icon/skill.svg" alt="" />{composerSettings.style_name || "技能"}</button>
               <button type="button" className={showSizeMenu ? "active" : ""} onClick={() => setShowSizeMenu((value) => !value)}><span className={`size-icon ratio-${String(composerSettings.image_size || "3:4").replace(":", "")}`} />{composerSettings.image_size || "3:4"}</button>
               <button type="button" disabled={composerExpanding} onClick={invokeTool("expand")}><img src="/ui-assets/size.png" alt="" />{composerExpanding ? "扩写中" : "扩写"}</button>
               <button type="button" className={`cf-composer-send${composerHasText ? " active" : ""}`} onClick={sendChat} title="发送">
