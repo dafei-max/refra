@@ -14,9 +14,9 @@ test("项目索引只在确认不存在时迁移并可回退到进程缓存", as
   assert.ok((server.match(/if \(error\.code !== "NOT_FOUND"\) throw error/g) || []).length >= 2);
 });
 
-test("生产函数部署在靠近上海 OSS 的香港区域", async () => {
+test("生产函数部署在 OpenAI 支持且靠近上海 OSS 的东京区域", async () => {
   const config = JSON.parse(await readFile(path.join(root, "vercel.json"), "utf-8"));
-  assert.deepEqual(config.services.web.functions["server.mjs"].regions, ["hkg1"]);
+  assert.deepEqual(config.services.web.functions["server.mjs"].regions, ["hnd1"]);
 });
 
 test("生产 OSS 操作使用传输加速且签名 URL 保留区域端点", async () => {
