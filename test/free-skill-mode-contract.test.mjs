@@ -22,7 +22,7 @@ test("自由模式是默认状态且与技能 UI 隔离", async () => {
   assert.match(app, /const skills = allStylePresets\.filter\(\(item\) => item\.id !== "none"\)/);
   assert.match(app, /briefTopRow\?\.classList\.toggle\("hidden", !isPreset\)/);
   assert.match(app, /form\.classList\.toggle\("free-mode", !isPreset\)/);
-  assert.match(app, /stylePickerButton\.classList\.toggle\("active", !isPreset\)/);
+  assert.match(app, /stylePickerButton\.classList\.toggle\("active", Boolean\(isPreset\)\)/);
   assert.doesNotMatch(await readFile(path.join(root, "public", "styles.css"), "utf-8"), /#005aff/i);
   assert.match(canvas, /ui-assets\/icon\/skill\.svg/);
 });
