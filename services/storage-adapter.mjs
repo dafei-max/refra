@@ -14,11 +14,15 @@ import OSS from "ali-oss";
 // error instead of silently falling back to the ephemeral /tmp directory.
 
 const DEFAULT_SIGNED_URL_TTL = 3600;
+const DEFAULT_OSS_REQUEST_TIMEOUT_MS = 5000;
+const DEFAULT_OSS_RETRY_MAX = 2;
 
 export class StorageError extends Error {
-  constructor(message) {
-    super(message);
+  constructor(message, options = {}) {
+    super(message, options.cause ? { cause: options.cause } : undefined);
     this.name = "StorageError";
+    this.code = options.code || "STORAGE_ERROR";
+    this.statusCode = options.statusCode || 500;
   }
 }
 
@@ -52,6 +56,8 @@ export function initStorage(options = {}) {
   const bucket = textOf(env.ALIYUN_OSS_BUCKET);
   const accessKeyId = textOf(env.ALIYUN_OSS_ACCESS_KEY_ID);
   const accessKeySecret = textOf(env.ALIYUN_OSS_ACCESS_KEY_SECRET);
+  const requestTimeoutMs = Math.max(1000, Number(env.OSS_REQUEST_TIMEOUT_MS || DEFAULT_OSS_REQUEST_TIMEOUT_MS));
+  const retryMax = Math.max(0, Math.min(5, Number(env.OSS_RETRY_MAX ?? DEFAULT_OSS_RETRY_MAX)));
   const hasOssConfig = Boolean(region && bucket && accessKeyId && accessKeySecret);
 
   const useOss = forceBackend === "oss" || (isVercel && forceBackend !== "fs");
@@ -69,7 +75,8 @@ export function initStorage(options = {}) {
       accessKeyId,
       accessKeySecret,
       secure: true,
-      timeout: 30000,
+      timeout: Number.isFinite(requestTimeoutMs) ? requestTimeoutMs : DEFAULT_OSS_REQUEST_TIMEOUT_MS,
+      retryMax: Number.isFinite(retryMax) ? retryMax : DEFAULT_OSS_RETRY_MAX,
     });
   } else {
     backend = "fs";
@@ -112,9 +119,17 @@ export async function storagePut(key, bytes, options = {}) {
   const normalized = normalizeKey(key);
   const buffer = Buffer.from(bytes);
   if (backend === "oss") {
-    await ossClient.put(normalized, buffer, {
-      headers: options.contentType ? { "Content-Type": options.contentType } : undefined,
-    });
+    try {
+      await ossClient.put(normalized, buffer, {
+        headers: options.contentType ? { "Content-Type": options.contentType } : undefined,
+      });
+    } catch (error) {
+      throw new StorageError("OSS 暂时不可用，请稍后重试", {
+        code: "STORAGE_UNAVAILABLE",
+        statusCode: 503,
+        cause: error,
+      });
+    }
     return { key: normalized };
   }
   const filePath = fsPathFor(normalized);
@@ -134,7 +149,7 @@ export async function storageGet(key) {
     try {
       const result = await ossClient.get(normalized);
       if (result.res?.status === 404 || result.content == null) {
-        throw new StorageError(`对象不存在: ${normalized}`);
+        throw new StorageError(`对象不存在: ${normalized}`, { code: "NOT_FOUND", statusCode: 404 });
       }
       return Buffer.from(result.content);
     } catch (error) {
@@ -142,15 +157,19 @@ export async function storageGet(key) {
       const status = error?.status || error?.statusCode || error?.code;
       const message = String(error?.message || "");
       if (status === 404 || /NoSuchKey|specified key does not exist/i.test(message)) {
-        throw new StorageError(`对象不存在: ${normalized}`);
+        throw new StorageError(`对象不存在: ${normalized}`, { code: "NOT_FOUND", statusCode: 404 });
       }
-      throw error;
+      throw new StorageError("OSS 暂时不可用，请稍后重试", {
+        code: "STORAGE_UNAVAILABLE",
+        statusCode: 503,
+        cause: error,
+      });
     }
   }
   try {
     return await readFile(fsPathFor(normalized));
   } catch {
-    throw new StorageError(`对象不存在: ${normalized}`);
+    throw new StorageError(`对象不存在: ${normalized}`, { code: "NOT_FOUND", statusCode: 404 });
   }
 }
 
@@ -161,8 +180,15 @@ export async function storageExists(key) {
     try {
       await ossClient.head(normalized);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      const status = error?.status || error?.statusCode || error?.code;
+      const message = String(error?.message || "");
+      if (status === 404 || /NoSuchKey|specified key does not exist/i.test(message)) return false;
+      throw new StorageError("OSS 暂时不可用，请稍后重试", {
+        code: "STORAGE_UNAVAILABLE",
+        statusCode: 503,
+        cause: error,
+      });
     }
   }
   return existsSync(fsPathFor(normalized));
@@ -175,8 +201,15 @@ export async function storageDelete(key) {
     try {
       await ossClient.delete(normalized);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      const status = error?.status || error?.statusCode || error?.code;
+      const message = String(error?.message || "");
+      if (status === 404 || /NoSuchKey|specified key does not exist/i.test(message)) return false;
+      throw new StorageError("OSS 暂时不可用，请稍后重试", {
+        code: "STORAGE_UNAVAILABLE",
+        statusCode: 503,
+        cause: error,
+      });
     }
   }
   try {
@@ -210,5 +243,7 @@ export function storageSignUrl(key, ttlSeconds) {
 }
 
 export const __storageTesting = {
+  DEFAULT_OSS_REQUEST_TIMEOUT_MS,
+  DEFAULT_OSS_RETRY_MAX,
   normalizeKey,
 };

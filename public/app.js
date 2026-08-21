@@ -1857,8 +1857,18 @@ async function loadProjects() {
 
 async function loadRecentProjects() {
   renderProjectSkeletons(recentProjects, { withNewCard: true, count: 5 });
-  const projects = await fetchProjects().catch(() => []);
-  renderProjectsInto(recentProjects, projects, { withNewCard: true, limit: 4 });
+  try {
+    const projects = await fetchProjects();
+    renderProjectsInto(recentProjects, projects, { withNewCard: true, limit: 4 });
+  } catch (error) {
+    recentProjects.removeAttribute("aria-busy");
+    recentProjects.innerHTML = `${newProjectCardHtml()}<button type="button" class="project-load-retry">项目加载失败，点击重试</button>`;
+    bindProjectCardInteractions(recentProjects);
+    recentProjects.querySelector(".project-load-retry")?.addEventListener("click", () => {
+      loadRecentProjects().catch(() => {});
+    });
+    throw error;
+  }
 }
 
 async function refreshProjectCards() {
@@ -2077,14 +2087,21 @@ form.addEventListener("submit", async (event) => {
     files: referenceFiles.map((item) => item.file),
     autoGenerate: true,
   };
-  const response = await apiFetch("/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, title: campaignNameInput.value.trim() || "Untitled" }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "创建项目失败");
-  await openCanvas(payload.id, init);
+  setLoading(true);
+  try {
+    const response = await apiFetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, title: campaignNameInput.value.trim() || "Untitled" }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "创建项目失败");
+    await openCanvas(payload.id, init);
+  } catch (error) {
+    setError(error.message || "创建项目失败，请稍后重试");
+  } finally {
+    setLoading(false);
+  }
 });
 
 uploadTrigger.addEventListener("click", () => referenceImageInput.click());

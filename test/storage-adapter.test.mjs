@@ -62,3 +62,8 @@ test("非法的存储 key 被拒绝", () => {
   assert.throws(() => normalizeKey("outputs/../a.png"), StorageError);
   assert.throws(() => normalizeKey(""), StorageError);
 });
+
+test("OSS 默认启用有界的超时重试", () => {
+  assert.equal(__storageTesting.DEFAULT_OSS_REQUEST_TIMEOUT_MS, 5000);
+  assert.equal(__storageTesting.DEFAULT_OSS_RETRY_MAX, 2);
+});

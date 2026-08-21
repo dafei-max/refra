@@ -2074,6 +2074,7 @@ async function loadMaterials() {
       return materials;
     } catch (error) {
       if (!(error instanceof StorageError)) throw error;
+      if (error.code !== "NOT_FOUND") throw error;
       if (!existsSync(PACKAGED_MATERIALS_PATH)) return [];
       const payload = JSON.parse(await readFile(PACKAGED_MATERIALS_PATH, "utf-8"));
       const materials = (payload.materials || []).map(normalizeMaterial).filter((item) => item.number && item.type);
@@ -2135,6 +2136,7 @@ async function loadAssetsIndex() {
     return result;
   } catch (error) {
     if (!(error instanceof StorageError)) throw error;
+    if (error.code !== "NOT_FOUND") throw error;
     if (!IS_OSS && existsSync(PACKAGED_ASSETS_PATH)) {
       const payload = JSON.parse(await readFile(PACKAGED_ASSETS_PATH, "utf-8"));
       return Array.isArray(payload?.assets) ? payload.assets : [];
@@ -2150,6 +2152,11 @@ async function saveAssetsIndex(assets) {
 }
 
 const PROJECTS_INDEX_KEY = "data/projects.json";
+let projectsIndexCache = null;
+
+function cloneProjectsIndex(projects) {
+  return structuredClone(Array.isArray(projects) ? projects : []);
+}
 
 function newProjectId() {
   return `p_${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
@@ -2166,17 +2173,21 @@ function newProjectMessageId() {
 async function loadProjectsIndex() {
   try {
     const payload = JSON.parse((await storageGet(PROJECTS_INDEX_KEY)).toString("utf-8"));
-    return Array.isArray(payload?.projects) ? payload.projects : [];
+    const projects = Array.isArray(payload?.projects) ? payload.projects : [];
+    projectsIndexCache = cloneProjectsIndex(projects);
+    return cloneProjectsIndex(projects);
   } catch (error) {
-    if (!(error instanceof StorageError)) throw error;
-    return null;
+    if (error instanceof StorageError && error.code === "NOT_FOUND") return null;
+    if (projectsIndexCache) return cloneProjectsIndex(projectsIndexCache);
+    throw error;
   }
 }
 
 async function saveProjectsIndex(projects) {
   const payload = JSON.stringify({ source: "project-index", count: projects.length, projects }, null, 2);
   await storagePut(PROJECTS_INDEX_KEY, Buffer.from(payload, "utf-8"), { contentType: "application/json" });
-  return projects;
+  projectsIndexCache = cloneProjectsIndex(projects);
+  return cloneProjectsIndex(projects);
 }
 
 async function getProjects() {
