@@ -139,6 +139,7 @@ function CanvasApp() {
   const [composerMention, setComposerMention] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [loadingNode, setLoadingNode] = useState(null);
+  const [newConversationPending, setNewConversationPending] = useState(false);
 
   const messagesRef = useRef([]);
   const lastTypoRef = useRef(null);
@@ -519,6 +520,7 @@ function CanvasApp() {
       setNodes([]);
       setAllMessages([]);
       setSelectedNodeId("");
+      setNewConversationPending(false);
       setLoadingNode(null);
       setChatCollapsed(false);
       setShowMini(false);
@@ -590,7 +592,7 @@ function CanvasApp() {
     if (!text || generating || !session?.projectId) return;
     const imageNodes = nodesRef.current.filter((node) => node.type === "image" && node.data?.objectKey);
     const selectedNode = imageNodes.find((node) => node.id === selectedNodeId || node.selected);
-    if (imageNodes.length && !selectedNode) {
+    if (!newConversationPending && imageNodes.length && !selectedNode) {
       updateStatusMessage("请先在画布中选择一张图片，再继续编辑");
       return;
     }
@@ -598,11 +600,16 @@ function CanvasApp() {
     window.__canvasPromptValue = "";
     setComposerHasText(false);
     setComposerMention(null);
-    runGeneration({ visual_description: text }, [], { baseNode: selectedNode || null });
-  }, [generating, session, selectedNodeId, runGeneration, updateStatusMessage]);
+    const baseNode = newConversationPending ? null : selectedNode || null;
+    setNewConversationPending(false);
+    runGeneration({ visual_description: text }, [], { baseNode });
+  }, [generating, session, selectedNodeId, newConversationPending, runGeneration, updateStatusMessage]);
 
   const startNewConversation = useCallback(() => {
     setAllMessages([]);
+    setNewConversationPending(true);
+    setSelectedNodeId("");
+    setNodes((current) => current.map((node) => ({ ...node, selected: false })));
     setComposerMention(null);
     setComposerHasText(false);
     setShowSizeMenu(false);
@@ -611,7 +618,7 @@ function CanvasApp() {
       chatInputRef.current.value = "";
       chatInputRef.current.focus();
     }
-  }, [setAllMessages]);
+  }, [setAllMessages, setNodes]);
 
   const handleComposerPaste = useCallback(async (event) => {
     const files = [...(event.clipboardData?.items || [])]

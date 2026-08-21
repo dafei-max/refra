@@ -2321,7 +2321,7 @@ button:disabled {
 }
 
 .invite-btn {
-  background: #005aff;
+  background: #04CAE0;
   color: #ffffff;
   border: 0;
   border-radius: 12px;
@@ -2407,8 +2407,8 @@ button:disabled {
 .title-input:not(:placeholder-shown),
 .subtitle-input:not(:placeholder-shown),
 .time-input:not(:placeholder-shown) {
-  color: #005aff;
-  border-color: rgba(0, 90, 255, 0.45);
+  color: #04CAE0;
+  border-color: rgba(4, 202, 224, 0.45);
 }
 
 .text-wrap textarea {
@@ -2845,7 +2845,7 @@ button:disabled {
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #14e1b9, #005aff);
+  background: linear-gradient(135deg, #14e1b9, #04CAE0);
   border: 0;
   color: #fff;
   font-size: 12px;
@@ -2900,7 +2900,7 @@ button:disabled {
 
 /* Figma 2026-08-09 精确对齐：主页、项目、Invite 与无限画布 */
 :root {
-  --accent: #005aff;
+  --accent: #04CAE0;
 }
 
 body {
@@ -3005,8 +3005,8 @@ body {
 .title-input:not(:placeholder-shown),
 .subtitle-input:not(:placeholder-shown),
 .time-input:not(:placeholder-shown) {
-  border-color: rgba(0, 90, 255, 0.7);
-  color: #005aff;
+  border-color: rgba(4, 202, 224, 0.7);
+  color: #04CAE0;
 }
 
 #visualDescriptionInput {
@@ -3025,6 +3025,10 @@ body {
   align-items: center;
 }
 
+.prompt-dock.free-mode .dock-actions {
+  margin-top: auto;
+}
+
 .dock-tools .tool-button {
   border-color: #525252;
   color: rgba(255, 255, 255, 0.9);
@@ -3032,9 +3036,14 @@ body {
 
 .dock-tools .tool-button.active,
 .dock-tools .tool-button[aria-pressed="true"] {
-  border-color: #005aff;
-  color: #005aff;
-  background: rgba(0, 90, 255, 0.08);
+  border-color: #04CAE0;
+  color: #04CAE0;
+  background: rgba(4, 202, 224, 0.08);
+}
+
+#stylePickerButton.active {
+  color: #04CAE0;
+  font-weight: 500;
 }
 
 .dock-tools .tool-button img {
@@ -3636,7 +3645,7 @@ body {
 }
 
 .cf-canvas-size-popover button.selected {
-  border-color: #005aff;
+  border-color: #04CAE0;
   color: #fff;
 }
 
@@ -3799,7 +3808,7 @@ body {
 }
 
 .cf-node.selected {
-  outline: 2px solid #005aff;
+  outline: 2px solid #04CAE0;
 }
 
 .cf-node-toolbar {
@@ -3918,7 +3927,7 @@ body {
 }
 
 .cf-node.selected {
-  outline: 2px solid #005aff;
+  outline: 2px solid #04CAE0;
 }
 
 .cf-node img {
@@ -4026,7 +4035,7 @@ body {
 }
 
 .cf-canvas-title-input {
-  border: 1px solid #005aff;
+  border: 1px solid #04CAE0;
   background: #1a1a1a;
   color: #ffffff;
   border-radius: 8px;
@@ -4070,8 +4079,8 @@ body {
 }
 
 .cf-extra-controls button.active {
-  background: #005aff;
-  border-color: #005aff;
+  background: #04CAE0;
+  border-color: #04CAE0;
 }
 
 .cf-chat-title {
@@ -4259,7 +4268,7 @@ body {
 }
 
 .canvas-page .cf-node-toolbar button.active {
-  background: #005aff;
+  background: #04CAE0;
   color: #fff;
 }
 
@@ -4553,7 +4562,7 @@ body {
 }
 
 .project-rename-field input:focus {
-  border-color: #005aff;
+  border-color: #04CAE0;
 }
 
 .project-delete-copy {

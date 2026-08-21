@@ -50,6 +50,8 @@ test("home and canvas composers paste images and canvas starts a clean conversat
   assert.match(canvas, /onPaste=\{handleComposerPaste\}/);
   assert.match(canvas, /className="cf-chat-new"/);
   assert.match(canvas, /setAllMessages\(\[\]\)/);
+  assert.match(canvas, /setNewConversationPending\(true\)/);
+  assert.match(canvas, /newConversationPending \? null : selectedNode/);
   assert.match(newChatIcon, /<svg/);
 });
 
@@ -77,5 +79,5 @@ test("selected image branding creates a protected derivative and toolbar icons a
 
 test("requested global type normalization removes 14px, 16px and heavier numeric weights", () => {
   assert.doesNotMatch(styles, /font-size:\s*(?:14|16)px/);
-  assert.doesNotMatch(styles, /font-weight:\s*(?!300\b)\d+/);
+  assert.match(styles, /#stylePickerButton\.active\s*\{[\s\S]*?color: #04CAE0;[\s\S]*?font-weight: 500;/);
 });

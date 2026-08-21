@@ -333,6 +333,9 @@ function syncStylePickerButton() {
   stylePickerIcon.classList.remove("preset-thumb");
   stylePickerLabel.textContent = isPreset ? styleNameShort(preset.name) : "技能";
   briefTopRow?.classList.toggle("hidden", !isPreset);
+  form.classList.toggle("free-mode", !isPreset);
+  stylePickerButton.classList.toggle("active", !isPreset);
+  stylePickerButton.setAttribute("aria-pressed", String(!isPreset));
   window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
 }
 

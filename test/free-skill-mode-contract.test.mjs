@@ -12,7 +12,7 @@ const [server, app, index, canvas] = await Promise.all([
   readFile(path.join(root, "frontend", "canvas.jsx"), "utf-8"),
 ]);
 
-test("自由模式是默认状态且与技能 UI 隔离", () => {
+test("自由模式是默认状态且与技能 UI 隔离", async () => {
   assert.match(index, /id="stylePresetInput"[^>]+value="none"/);
   assert.match(index, /id="briefTopRow" class="brief-top-row hidden"/);
   assert.match(index, /ui-assets\/icon\/skill\.svg/);
@@ -21,6 +21,9 @@ test("自由模式是默认状态且与技能 UI 隔离", () => {
   assert.doesNotMatch(app, /importStyleFolder|style-presets\/add|addStyleFolderButton/);
   assert.match(app, /const skills = allStylePresets\.filter\(\(item\) => item\.id !== "none"\)/);
   assert.match(app, /briefTopRow\?\.classList\.toggle\("hidden", !isPreset\)/);
+  assert.match(app, /form\.classList\.toggle\("free-mode", !isPreset\)/);
+  assert.match(app, /stylePickerButton\.classList\.toggle\("active", !isPreset\)/);
+  assert.doesNotMatch(await readFile(path.join(root, "public", "styles.css"), "utf-8"), /#005aff/i);
   assert.match(canvas, /ui-assets\/icon\/skill\.svg/);
 });
 
