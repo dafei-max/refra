@@ -27,6 +27,18 @@ import {
   storagePut,
   storageSignUrl,
 } from "./services/storage-adapter.mjs";
+import {
+  SKILL_PLAN_SCHEMA,
+  SKILL_REVIEW_SCHEMA,
+  buildTargetedEditPrompt,
+  normalizeOptimizationMode,
+  publicOptimizationJob,
+  referenceHashFor,
+  shouldTriggerOptimization,
+  skillVersionFor,
+  styleFingerprintCacheKey,
+  summarizeTimingSamples,
+} from "./services/skill-optimization.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,8 +47,13 @@ const DESIGN_PROMPT_URL = new URL("./设计判断.md", import.meta.url);
 
 const PORT = Number(process.env.PORT || 5173);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-5";
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+const SKILL_TEXT_MODEL = process.env.OPENAI_SKILL_MODEL || "gpt-5.5";
+const SKILL_REVISION_THRESHOLD = Math.min(1, Math.max(0, Number(process.env.SKILL_REVISION_THRESHOLD || 0.65)));
+const SKILL_REVIEW_REASONING_EFFORT = process.env.SKILL_REVIEW_REASONING_EFFORT || "low";
+const SKILL_PLANNING_REASONING_EFFORT = process.env.SKILL_PLANNING_REASONING_EFFORT || "low";
 const TEXT_MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_TEXT_MAX_OUTPUT_TOKENS || 4096);
 const PIPELINE_MODE = process.env.PIPELINE_MODE === "quality" ? "quality" : "fast";
 const FAST_PIPELINE = PIPELINE_MODE === "fast";
@@ -1389,6 +1406,117 @@ function loadPresetPrinciples(preset) {
   };
 }
 
+const SKILL_FINGERPRINTS_KEY = "data/skill-fingerprints.json";
+let skillFingerprintCache = null;
+
+function loadSkillRuntime(preset) {
+  const principles = loadPresetPrinciples(preset);
+  const content = textOf(principles.content).trim();
+  return {
+    id: preset?.preset_id || NO_PRESET_ID,
+    name: preset?.preset_name || principles.title || "Skill",
+    content,
+    version: skillVersionFor(content),
+  };
+}
+
+async function loadSkillFingerprintCache() {
+  if (skillFingerprintCache) return { ...skillFingerprintCache };
+  try {
+    const payload = JSON.parse((await storageGet(SKILL_FINGERPRINTS_KEY)).toString("utf-8"));
+    skillFingerprintCache = payload?.fingerprints && typeof payload.fingerprints === "object" ? payload.fingerprints : {};
+  } catch (error) {
+    if (!(error instanceof StorageError) || error.code !== "NOT_FOUND") throw error;
+    skillFingerprintCache = {};
+  }
+  return { ...skillFingerprintCache };
+}
+
+async function saveSkillFingerprintCache(fingerprints) {
+  skillFingerprintCache = { ...fingerprints };
+  await storagePut(
+    SKILL_FINGERPRINTS_KEY,
+    Buffer.from(JSON.stringify({ source: "skill-reference-fingerprints", fingerprints }, null, 2)),
+    { contentType: "application/json" },
+  );
+}
+
+function designLanguageReference(references = []) {
+  return references.find((item) => item.role === "风格")
+    || references.find((item) => ["元素", "角色", "主体"].includes(item.role))
+    || references.find((item) => item.role !== "整合版式")
+    || null;
+}
+
+async function styleFingerprintFor(skill, reference) {
+  if (!reference) return { key: styleFingerprintCacheKey(skill.version, "no-reference"), cache_hit: true, fingerprint: "无固定风格参考图" };
+  const [resolved] = await fetchImageBytes([reference]);
+  const referenceHash = referenceHashFor(resolved.bytes);
+  const key = styleFingerprintCacheKey(skill.version, referenceHash);
+  const cache = await loadSkillFingerprintCache();
+  if (cache[key]) return { ...cache[key], key, cache_hit: true };
+  const fingerprint = [
+    reference.label || reference.number || "风格参考",
+    reference.description || reference.Reference || "",
+    reference.execution_description || "",
+    reference.selection_use_for || "",
+    reference.selection_do_not_copy || "",
+  ].filter(Boolean).join("\n").slice(0, 8000);
+  const entry = {
+    skill_version: skill.version,
+    reference_hash: referenceHash,
+    reference_number: reference.number || "",
+    fingerprint,
+    created_at: new Date().toISOString(),
+  };
+  cache[key] = entry;
+  await saveSkillFingerprintCache(cache);
+  return { ...entry, key, cache_hit: false };
+}
+
+function localSkillPlan(request, skill, fingerprint, finalPrompt = "") {
+  return {
+    style_id: skill.id,
+    generation_prompt: finalPrompt || textOf(request.visual_description).trim(),
+    evaluation_criteria: ["只有一个明确主焦点", "主体与陪体形成接触、遮挡、穿插或负空间关系", "内容字段完整且没有新增文字"],
+    content_invariants: [
+      `用户画面描述：${textOf(request.visual_description).trim()}`,
+      textOf(request.campaign_name).trim() ? `主标题必须逐字保持「${textOf(request.campaign_name).trim()}」` : "不得新增主标题",
+      campaignSubtitleText(request) ? `副标题必须逐字保持「${campaignSubtitleText(request)}」` : "不得新增副标题",
+      campaignTimeText(request) ? `活动时间必须逐字保持「${campaignTimeText(request)}」` : "不得新增活动时间",
+    ],
+    style_invariants: [fingerprint?.fingerprint || "遵守完整 Skill 规则", "不复制参考图中的人物、商品、文字、品牌或完整布局"],
+    source: "local-fallback",
+  };
+}
+
+async function planSkillGeneration({ request, brief, skill, references, basePrompt }) {
+  const styleReference = designLanguageReference(references);
+  const fingerprint = await styleFingerprintFor(skill, styleReference);
+  const fallback = localSkillPlan(request, skill, fingerprint, basePrompt);
+  if (!OPENAI_API_KEY) return { plan: fallback, fingerprint, styleReference };
+  const plan = await callStructuredResponses({
+    name: "skill_generation_plan",
+    schema: SKILL_PLAN_SCHEMA,
+    reasoningEffort: SKILL_PLANNING_REASONING_EFFORT,
+    references: [styleReference, ...references.filter((item) => item.source === "用户上传")].filter(Boolean),
+    system: [
+      "你是商业营销 KV 的生图规划器。一次完成风格路由、参考图分析、Prompt 组装、自检标准和严格不变量。",
+      "输出必须短、具体、可直接执行，不输出思考过程。完整 Skill 是最高优先级风格规则，用户 Brief 是最高优先级内容事实。",
+      "参考图只用于设计语法；不得复制其中的具体人物、商品、文字、品牌、logo 或完整布局。",
+    ].join("\n"),
+    user: [
+      `【完整 Skill｜版本 ${skill.version}】\n${skill.content}`,
+      `【用户 Brief】\n${JSON.stringify({ request, brief }, null, 2)}`,
+      `【已缓存风格指纹｜${fingerprint.cache_hit ? "命中" : "新建"}】\n${fingerprint.fingerprint}`,
+      `【现有两阶段基础 Prompt】\n${basePrompt}`,
+      "generation_prompt 必须明确：Image 1 is the design-language reference only. 只迁移构图、抽象方式、造型、色彩关系和表面语法，不复制具体人物、商品、文字、品牌和完整布局。",
+      "evaluation_criteria 只列可观察验收项；content_invariants 与 style_invariants 只列不得改变的事实。",
+    ].join("\n\n"),
+  });
+  return { plan: { ...fallback, ...plan, source: "gpt-5.5-structured" }, fingerprint, styleReference };
+}
+
 function loadCreativeMethodCards(query = "", limit = 5) {
   if (!existsSync(CREATIVE_METHODS_DIR)) return [];
   return readdirSync(CREATIVE_METHODS_DIR)
@@ -2152,7 +2280,75 @@ async function saveAssetsIndex(assets) {
 }
 
 const PROJECTS_INDEX_KEY = "data/projects.json";
+const GENERATION_METRICS_KEY = "data/generation-metrics.json";
 let projectsIndexCache = null;
+
+function newGenerationJobId() {
+  return `g_${Date.now()}-${crypto.randomBytes(5).toString("hex")}`;
+}
+
+function generationJobKey(id) {
+  return `data/generation-jobs/${path.basename(textOf(id).trim())}.json`;
+}
+
+async function loadGenerationJob(id) {
+  const cleanId = path.basename(textOf(id).trim());
+  if (!cleanId || cleanId !== textOf(id).trim()) throw httpError(400, "无效的生成任务 ID");
+  try {
+    return JSON.parse((await storageGet(generationJobKey(cleanId))).toString("utf-8"));
+  } catch (error) {
+    if (error instanceof StorageError && error.code === "NOT_FOUND") return null;
+    throw error;
+  }
+}
+
+async function saveGenerationJob(job) {
+  const next = { ...job, updated_at: new Date().toISOString() };
+  await storagePut(generationJobKey(next.id), Buffer.from(JSON.stringify(next, null, 2)), { contentType: "application/json" });
+  return next;
+}
+
+async function updateGenerationJob(id, patch = {}) {
+  const job = await loadGenerationJob(id);
+  if (!job) return null;
+  return saveGenerationJob({ ...job, ...patch });
+}
+
+function decorateGenerationJob(job = {}) {
+  const draft = job.draft_image?.object_key
+    ? { ...job.draft_image, url: storageSignUrl(job.draft_image.object_key) }
+    : job.draft_image;
+  const finalImage = job.final_image?.object_key
+    ? { ...job.final_image, url: storageSignUrl(job.final_image.object_key) }
+    : (job.final_image || null);
+  return publicOptimizationJob({
+    ...job,
+    draft_image: draft,
+    final_image: finalImage,
+    draft_image_url: draft?.url || "",
+    final_image_url: finalImage?.url || "",
+  });
+}
+
+async function loadTimingSamples() {
+  try {
+    const payload = JSON.parse((await storageGet(GENERATION_METRICS_KEY)).toString("utf-8"));
+    return Array.isArray(payload?.samples) ? payload.samples : [];
+  } catch (error) {
+    if (error instanceof StorageError && error.code === "NOT_FOUND") return [];
+    throw error;
+  }
+}
+
+async function appendTimingSample(sample) {
+  const samples = [...(await loadTimingSamples()), sample].slice(-200);
+  await storagePut(
+    GENERATION_METRICS_KEY,
+    Buffer.from(JSON.stringify({ source: "generation-timing", samples, summary: summarizeTimingSamples(samples) }, null, 2)),
+    { contentType: "application/json" },
+  );
+  return summarizeTimingSamples(samples);
+}
 
 function cloneProjectsIndex(projects) {
   return structuredClone(Array.isArray(projects) ? projects : []);
@@ -2217,6 +2413,8 @@ function decorateProject(project = {}) {
     elements: (project.elements || []).map((element) => ({
       ...element,
       url: element.object_key ? storageSignUrl(element.object_key) : "",
+      draft_url: element.draft_object_key ? storageSignUrl(element.draft_object_key) : "",
+      final_url: element.final_object_key ? storageSignUrl(element.final_object_key) : "",
     })),
     messages: (project.messages || []).map((message) => ({
       ...message,
@@ -2236,10 +2434,32 @@ function elementsFromImageResult(result) {
     elements.push({ id: newProjectElementId(), kind: "typography", name: typoKey.split("/").pop(), object_key: typoKey, created_at: now });
   }
   if (sceneKey) {
-    elements.push({ id: newProjectElementId(), kind: "kv", name: sceneKey.split("/").pop(), object_key: sceneKey, created_at: now });
+    elements.push({
+      id: newProjectElementId(),
+      kind: "kv",
+      name: sceneKey.split("/").pop(),
+      object_key: sceneKey,
+      draft_object_key: image.draft_object_key || result.optimization?.draft_image?.object_key || "",
+      final_object_key: result.optimization?.final_image?.object_key || (result.optimization?.mode === "smart" ? "" : image.object_key || sceneKey),
+      optimization_job_id: result.optimization?.id || "",
+      optimization_status: result.optimization?.optimization_status || "",
+      optimization_reason: result.optimization?.review_result?.max_problem || "",
+      created_at: now,
+    });
   }
   if (!elements.length && image.object_key) {
-    elements.push({ id: newProjectElementId(), kind: "kv", name: String(image.name || image.object_key.split("/").pop()), object_key: image.object_key, created_at: now });
+    elements.push({
+      id: newProjectElementId(),
+      kind: "kv",
+      name: String(image.name || image.object_key.split("/").pop()),
+      object_key: image.object_key,
+      draft_object_key: image.draft_object_key || result.optimization?.draft_image?.object_key || "",
+      final_object_key: result.optimization?.final_image?.object_key || (result.optimization?.mode === "smart" ? "" : image.object_key || ""),
+      optimization_job_id: result.optimization?.id || "",
+      optimization_status: result.optimization?.optimization_status || "",
+      optimization_reason: result.optimization?.review_result?.max_problem || "",
+      created_at: now,
+    });
   }
   return elements;
 }
@@ -2250,6 +2470,23 @@ async function appendGenerationToProject(projectId, result) {
   if (!project) return null;
   const added = elementsFromImageResult(result);
   if (!added.length) return project;
+  const optimizedKv = added.find((element) => element.kind === "kv" && element.optimization_job_id);
+  const existingJobElement = optimizedKv
+    ? (project.elements || []).find((element) => element.optimization_job_id === optimizedKv.optimization_job_id)
+    : null;
+  if (existingJobElement && optimizedKv) {
+    Object.assign(existingJobElement, {
+      ...optimizedKv,
+      id: existingJobElement.id,
+      created_at: existingJobElement.created_at || optimizedKv.created_at,
+      draft_object_key: optimizedKv.draft_object_key || existingJobElement.draft_object_key || "",
+      final_object_key: optimizedKv.final_object_key || existingJobElement.final_object_key || "",
+    });
+    project.thumbnail = existingJobElement.object_key;
+    project.updated_at = new Date().toISOString();
+    await saveProjectsIndex(projects);
+    return project;
+  }
   const existingKeys = new Set((project.elements || []).map((element) => element.object_key).filter(Boolean));
   const unique = added.filter((element) => !existingKeys.has(element.object_key));
   if (!unique.length) return project;
@@ -2296,6 +2533,11 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
         if (Number.isFinite(Number(element.x))) existing.x = Number(element.x);
         if (Number.isFinite(Number(element.y))) existing.y = Number(element.y);
         if (textOf(element.name)) existing.name = textOf(element.name);
+        existing.draft_object_key = textOf(element.draft_object_key).slice(0, 1000);
+        existing.final_object_key = textOf(element.final_object_key).slice(0, 1000);
+        existing.optimization_job_id = textOf(element.optimization_job_id).slice(0, 180);
+        existing.optimization_status = textOf(element.optimization_status).slice(0, 80);
+        existing.optimization_reason = textOf(element.optimization_reason).slice(0, 600);
         byKey.set(key, existing);
       } else {
         byKey.set(key, {
@@ -2303,6 +2545,11 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
           kind: ["typography", "kv", "title", "background", "package"].includes(element.kind) ? element.kind : "kv",
           name: textOf(element.name) || key.split("/").pop(),
           object_key: key,
+          draft_object_key: textOf(element.draft_object_key).slice(0, 1000),
+          final_object_key: textOf(element.final_object_key).slice(0, 1000),
+          optimization_job_id: textOf(element.optimization_job_id).slice(0, 180),
+          optimization_status: textOf(element.optimization_status).slice(0, 80),
+          optimization_reason: textOf(element.optimization_reason).slice(0, 600),
           x: Number.isFinite(Number(element.x)) ? Number(element.x) : 0,
           y: Number.isFinite(Number(element.y)) ? Number(element.y) : 0,
           created_at: new Date().toISOString(),
@@ -2336,6 +2583,8 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
       doudou_ip: Boolean(settings.doudou_ip),
       include_logo: Boolean(settings.include_logo),
       include_search_overlay: Boolean(settings.include_search_overlay),
+      optimization_mode: normalizeOptimizationMode(settings.optimization_mode, booleanPreference(settings.auto_optimize, true)),
+      auto_optimize: booleanPreference(settings.auto_optimize, true),
     };
   }
   if (Array.isArray(messages)) {
@@ -2360,7 +2609,7 @@ async function deleteProjectById(rawId) {
   const projects = await getProjects();
   const project = projects.find((item) => item.id === id);
   if (!project) return null;
-  const elementKeys = new Set((project.elements || []).map((element) => element.object_key).filter(Boolean));
+  const elementKeys = new Set((project.elements || []).flatMap((element) => [element.object_key, element.draft_object_key, element.final_object_key]).filter(Boolean));
   for (const key of elementKeys) await storageDelete(key);
   const assets = await loadAssetsIndex();
   const removedAssets = assets.filter((asset) => elementKeys.has(asset.object_key));
@@ -2389,6 +2638,10 @@ async function deleteProjectElementById(projectId, elementId) {
     } else {
       await storageDelete(removed.object_key);
     }
+  }
+  for (const relatedKey of [removed.draft_object_key, removed.final_object_key].filter((key) => key && key !== removed.object_key)) {
+    const stillUsed = (project.elements || []).some((element) => [element.object_key, element.draft_object_key, element.final_object_key].includes(relatedKey));
+    if (!stillUsed) await storageDelete(relatedKey);
   }
   if (project.thumbnail === removed.object_key) {
     const lastKv = [...project.elements].reverse().find((element) => element.kind === "kv");
@@ -2555,6 +2808,8 @@ function decorateAssetUrls(asset = {}) {
 function collectAssetKeys(asset = {}) {
   const keys = [];
   if (asset.object_key) keys.push(asset.object_key);
+  if (asset.draft_object_key) keys.push(asset.draft_object_key);
+  if (asset.final_object_key) keys.push(asset.final_object_key);
   for (const layer of [asset.layers?.typography, asset.layers?.scene]) {
     if (layer?.object_key) keys.push(layer.object_key);
   }
@@ -2571,8 +2826,13 @@ async function persistAssetRecord(result) {
   const name = textOf(image?.name).trim();
   if (!name || image?.skipped) return;
   const assets = await loadAssetsIndex();
+  const optimizationJobId = textOf(result.optimization?.id).trim();
+  const draftObjectKey = textOf(result.optimization?.draft_image?.object_key).trim();
   const existing = assets.find((item) => (
-    (image.object_key && item.object_key === image.object_key) || item.name === name
+    (image.object_key && item.object_key === image.object_key)
+    || item.name === name
+    || (optimizationJobId && item.optimization_job_id === optimizationJobId)
+    || (draftObjectKey && (item.object_key === draftObjectKey || item.draft_object_key === draftObjectKey))
   ));
   const record = {
     name,
@@ -2585,6 +2845,18 @@ async function persistAssetRecord(result) {
     creative_plan: result.creative_plan || null,
     preflight_review: result.preflight_review || null,
     quality_review: result.quality_review || null,
+    skill_id: result.optimization?.skill_id || "",
+    skill_version: result.optimization?.skill_version || "",
+    generation_prompt: result.optimization?.generation_prompt || result.final_prompt || "",
+    draft_object_key: result.optimization?.draft_image?.object_key || "",
+    final_object_key: result.optimization?.final_image?.object_key
+      || (result.optimization?.mode === "smart" ? "" : image.object_key || ""),
+    optimization_job_id: optimizationJobId,
+    review_result: result.optimization?.review_result || null,
+    optimization_triggered: Boolean(result.optimization?.optimization_triggered),
+    optimization_status: result.optimization?.optimization_status || "not_requested",
+    optimization_error: result.optimization?.optimization_error || "",
+    timing: result.optimization?.timing || result.performance?.stages || {},
     retrieval: result.retrieval || null,
     generation_mode: image.generation_mode || "one-shot",
     layers: image.layers?.typography?.object_key || image.layers?.scene?.object_key
@@ -2602,10 +2874,238 @@ async function persistAssetRecord(result) {
     modified_at: new Date().toISOString(),
   };
   const next = assets.filter((item) => !(
-    (image.object_key && item.object_key === image.object_key) || item.name === name
+    item === existing
+    || (image.object_key && item.object_key === image.object_key)
+    || item.name === name
+    || (optimizationJobId && item.optimization_job_id === optimizationJobId)
+    || (draftObjectKey && (item.object_key === draftObjectKey || item.draft_object_key === draftObjectKey))
   ));
   next.push(record);
   await saveAssetsIndex(next);
+}
+
+function persistableReference(reference = {}) {
+  return {
+    role: textOf(reference.role).slice(0, 80),
+    number: textOf(reference.number).slice(0, 180),
+    label: textOf(reference.label).slice(0, 240),
+    image: textOf(reference.image).slice(0, 1000),
+    local_image: textOf(reference.local_image).startsWith("/") ? textOf(reference.local_image).slice(0, 1000) : "",
+    object_key: textOf(reference.object_key).slice(0, 1000),
+    description: textOf(reference.description).slice(0, 8000),
+    execution_description: textOf(reference.execution_description).slice(0, 8000),
+  };
+}
+
+async function createSkillOptimizationJob({ result, skill, skillPlan, styleReference, mode, timing }) {
+  const now = new Date().toISOString();
+  const job = {
+    id: newGenerationJobId(),
+    project_id: textOf(result.request?.project_id).trim(),
+    status: mode === "smart" ? "draft_ready" : "completed",
+    mode,
+    skill_id: skill.id,
+    skill_version: skill.version,
+    brief: result.brief,
+    request: result.request,
+    reference_images: styleReference ? [persistableReference(styleReference)] : [],
+    generation_prompt: skillPlan.generation_prompt,
+    skill_plan: skillPlan,
+    draft_image: result.image_result,
+    final_image: mode === "smart" ? null : result.image_result,
+    review_result: null,
+    optimization_triggered: false,
+    optimization_status: mode === "smart" ? "pending" : "skipped_fast_mode",
+    optimization_error: "",
+    optimization_attempts: 0,
+    timing,
+    created_at: now,
+    updated_at: now,
+  };
+  return saveGenerationJob(job);
+}
+
+function normalizeSkillReview(review = {}, plan = {}) {
+  const needsRevision = review.needs_revision === true;
+  const instructions = Array.isArray(review.edit_instructions) ? review.edit_instructions.filter(Boolean).slice(0, 8) : [];
+  if (needsRevision && instructions.length > 0 && instructions.length < 4) {
+    const supplements = [
+      "围绕同一主焦点收紧主体与陪体的间距，并用明确遮挡建立前后关系",
+      "裁切或隐藏非关键物体的完整外轮廓，避免多个独立物体并排展示",
+      "压缩背景空间与装饰密度，使环境只承担主体承托作用",
+      "保持现有标题、商品、人物身份、配色和材质系统不变",
+    ];
+    for (const item of supplements) if (instructions.length < 4 && !instructions.includes(item)) instructions.push(item);
+  }
+  return {
+    needs_revision: needsRevision,
+    severity: Math.min(1, Math.max(0, Number(review.severity) || 0)),
+    problem_type: textOf(review.problem_type).slice(0, 120),
+    max_problem: textOf(review.max_problem).slice(0, 600),
+    evidence: (review.evidence || []).filter(Boolean).slice(0, 6),
+    edit_instructions: instructions,
+    strict_invariants: [...new Set([
+      ...(review.strict_invariants || []),
+      ...(plan.content_invariants || []),
+      ...(plan.style_invariants || []),
+    ].filter(Boolean))].slice(0, 16),
+  };
+}
+
+const optimizationJobLocks = new Map();
+
+async function runSkillOptimization(jobId, onStage = () => {}, { retry = false } = {}) {
+  if (optimizationJobLocks.has(jobId)) return optimizationJobLocks.get(jobId);
+  const promise = (async () => {
+    let job = await loadGenerationJob(jobId);
+    if (!job) throw httpError(404, "未找到该优化任务");
+    if (job.mode !== "smart") return decorateGenerationJob(job);
+    if (retry && ["failed", "review_failed"].includes(job.optimization_status)) {
+      job = await updateGenerationJob(jobId, {
+        status: "draft_ready",
+        optimization_status: "pending",
+        optimization_error: "",
+        optimization_attempts: 0,
+      });
+    }
+    if (job.optimization_attempts >= 1 || ["completed", "optimizing"].includes(job.status)) return decorateGenerationJob(job);
+    const startedAt = Date.now();
+    const reviewStartedAt = Date.now();
+    const preset = presetByStyleId(job.skill_id);
+    const skill = loadSkillRuntime(preset);
+    const styleReference = job.reference_images?.[0] || null;
+    const draftReference = outputReference(
+      job.draft_image?.url || "",
+      "Image 1 — edit target",
+      "第一张完整 KV 初稿，是唯一编辑目标。",
+      "",
+      job.draft_image?.object_key || "",
+    );
+    if (styleReference) {
+      styleReference.label = "Image 2 — design-language reference only";
+      styleReference.number = styleReference.number || "Image 2";
+    }
+    job = await updateGenerationJob(jobId, { status: "reviewing", optimization_status: "reviewing", optimization_attempts: 1 });
+    onStage("optimization_status", { status: "reviewing", message: "正在检查画面结构", job: decorateGenerationJob(job) });
+    let review;
+    try {
+      review = await callStructuredResponses({
+        name: "skill_draft_review",
+        schema: SKILL_REVIEW_SCHEMA,
+        reasoningEffort: SKILL_REVIEW_REASONING_EFFORT,
+        maxOutputTokens: 1800,
+        references: [draftReference, styleReference].filter(Boolean),
+        system: [
+          "你是商业 KV 结构评审器。只判断一个影响最大的结构问题，不输出长篇分析。",
+          "依次检查：唯一主焦点；主体与陪体的接触/遮挡/穿插/负空间；是否完整独立并排；动作轴/比例跳跃/整体轮廓；环境承托；边缘颗粒描边深度系统；用户内容缺失。",
+          "edit_instructions 必须是 4-8 条直接可执行动作。禁止使用‘更高级’‘更有设计感’等抽象表述。合格时 needs_revision=false 且 edit_instructions 为空。",
+        ].join("\n"),
+        user: [
+          `【用户 Brief】\n${JSON.stringify(job.brief, null, 2)}`,
+          `【完整 Skill｜版本 ${skill.version}】\n${skill.content}`,
+          `【首轮规划】\n${JSON.stringify(job.skill_plan, null, 2)}`,
+          "Image 1 是首张完整 KV；Image 2 是原始 reference-library 设计语法参考。只选一个最大问题。",
+        ].join("\n\n"),
+      });
+      review = normalizeSkillReview(review, job.skill_plan || {});
+    } catch (error) {
+      const timing = { ...job.timing, review_ms: Date.now() - reviewStartedAt, total_ms: (job.timing?.total_ms || 0) + (Date.now() - startedAt) };
+      job = await updateGenerationJob(jobId, {
+        status: "completed",
+        optimization_status: "review_failed",
+        optimization_error: error.message,
+        final_image: job.draft_image,
+        timing,
+      });
+      const metrics = await appendTimingSample(timing).catch(() => null);
+      onStage("optimization_error", { message: error.message, draft_preserved: true, job: decorateGenerationJob(job), metrics });
+      return decorateGenerationJob(job);
+    }
+    const reviewMs = Date.now() - reviewStartedAt;
+    onStage("review", { review_result: review, threshold: SKILL_REVISION_THRESHOLD });
+    if (!shouldTriggerOptimization(review, SKILL_REVISION_THRESHOLD)) {
+      const timing = { ...job.timing, review_ms: reviewMs, edit_ms: 0, total_ms: (job.timing?.total_ms || 0) + (Date.now() - startedAt) };
+      job = await updateGenerationJob(jobId, {
+        status: "completed",
+        optimization_status: "passed",
+        review_result: review,
+        final_image: job.draft_image,
+        timing,
+      });
+      const metrics = await appendTimingSample(timing).catch(() => null);
+      onStage("optimization_complete", { job: decorateGenerationJob(job), metrics });
+      return decorateGenerationJob(job);
+    }
+    job = await updateGenerationJob(jobId, { status: "optimizing", optimization_status: "optimizing", review_result: review, optimization_triggered: true });
+    onStage("optimization_status", { status: "optimizing", message: "正在优化主视觉关系", reason: review.max_problem, job: decorateGenerationJob(job) });
+    const editStartedAt = Date.now();
+    try {
+      const edited = await generateImageEditFile({
+        prompt: buildTargetedEditPrompt(review, review.strict_invariants),
+        selected: [draftReference, styleReference].filter(Boolean),
+        size: job.draft_image?.size || SIZE_MAP[job.request?.image_size] || "768x1024",
+        prefix: "kv-skill-optimized",
+        quality: "medium",
+        applyOverlay: true,
+        overlayRequest: job.request || {},
+      });
+      const finalImage = {
+        ...publicImageLayer(edited),
+        generation_mode: "skill-auto-optimized",
+        draft_object_key: job.draft_image?.object_key || "",
+        layers: {
+          ...(job.draft_image?.layers || {}),
+          scene: publicImageLayer(edited),
+        },
+      };
+      const timing = {
+        ...job.timing,
+        review_ms: reviewMs,
+        edit_ms: Date.now() - editStartedAt,
+        total_ms: (job.timing?.total_ms || 0) + (Date.now() - startedAt),
+      };
+      job = await updateGenerationJob(jobId, {
+        status: "completed",
+        optimization_status: "completed",
+        review_result: review,
+        final_image: finalImage,
+        timing,
+      });
+      const finalResult = {
+        request: job.request,
+        brief: job.brief,
+        final_prompt: job.generation_prompt,
+        image_result: finalImage,
+        quality_review: review,
+        optimization: decorateGenerationJob(job),
+      };
+      await persistAssetRecord(finalResult);
+      if (job.project_id) await appendGenerationToProject(job.project_id, finalResult);
+      const metrics = await appendTimingSample(timing).catch(() => null);
+      onStage("optimized_image", { image_result: finalImage, job: decorateGenerationJob(job) });
+      onStage("optimization_complete", { job: decorateGenerationJob(job), metrics });
+      return decorateGenerationJob(job);
+    } catch (error) {
+      const timing = {
+        ...job.timing,
+        review_ms: reviewMs,
+        edit_ms: Date.now() - editStartedAt,
+        total_ms: (job.timing?.total_ms || 0) + (Date.now() - startedAt),
+      };
+      job = await updateGenerationJob(jobId, {
+        status: "completed",
+        optimization_status: "failed",
+        optimization_error: error.message,
+        final_image: job.draft_image,
+        timing,
+      });
+      const metrics = await appendTimingSample(timing).catch(() => null);
+      onStage("optimization_error", { message: error.message, draft_preserved: true, job: decorateGenerationJob(job), metrics });
+      return decorateGenerationJob(job);
+    }
+  })().finally(() => optimizationJobLocks.delete(jobId));
+  optimizationJobLocks.set(jobId, promise);
+  return promise;
 }
 
 async function saveAssetSplitRecord(name, splitResult) {
@@ -3156,7 +3656,7 @@ async function callResponses({ system, user, expectJson, images = [], maxOutputT
   };
   if (OPENAI_REASONING_EFFORT) body.reasoning = { effort: OPENAI_REASONING_EFFORT };
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${OPENAI_API_KEY}`,
@@ -3195,7 +3695,7 @@ async function callResponses({ system, user, expectJson, images = [], maxOutputT
         },
       ],
     };
-    const retryResponse = await fetch("https://api.openai.com/v1/responses", {
+    const retryResponse = await fetch(`${OPENAI_BASE_URL}/responses`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
@@ -3213,6 +3713,56 @@ async function callResponses({ system, user, expectJson, images = [], maxOutputT
       throw new Error(`${firstError.message}；压缩重答后仍失败：${retryError.message}`);
     }
   }
+}
+
+async function callStructuredResponses({
+  name,
+  schema,
+  system,
+  user,
+  references = [],
+  model = SKILL_TEXT_MODEL,
+  reasoningEffort = "low",
+  maxOutputTokens = 2600,
+}) {
+  if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
+  const resolved = references.length ? await fetchImageBytes(references.slice(0, 6)) : [];
+  const imageContent = resolved.flatMap((image) => [
+    { type: "input_text", text: `【${image.item?.label || image.item?.number || image.filename}】` },
+    { type: "input_image", image_url: `data:${image.type};base64,${image.bytes.toString("base64")}`, detail: "low" },
+  ]);
+  const body = {
+    model,
+    max_output_tokens: maxOutputTokens,
+    reasoning: { effort: reasoningEffort },
+    input: [
+      { role: "system", content: [{ type: "input_text", text: system }] },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: user }, ...imageContent],
+      },
+    ],
+    text: {
+      verbosity: "low",
+      format: {
+        type: "json_schema",
+        name,
+        strict: true,
+        schema,
+      },
+    },
+  };
+  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error?.message || `OpenAI Responses API 请求失败：${response.status}`);
+  return parseJsonLoose(parseResponseText(payload));
 }
 
 async function callVisionResponses({ system, user, imagePath, expectJson = true }) {
@@ -3239,7 +3789,7 @@ async function callVisionResponses({ system, user, imagePath, expectJson = true 
     ],
   };
   if (OPENAI_REASONING_EFFORT) body.reasoning = { effort: OPENAI_REASONING_EFFORT };
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${OPENAI_API_KEY}`,
@@ -4463,6 +5013,8 @@ function validateExpandRequest(body) {
     doudou_ip: isDoudouEnabled(body),
     include_logo: booleanPreference(body.include_logo, false),
     include_search_overlay: booleanPreference(body.include_search_overlay, false),
+    auto_optimize: booleanPreference(body.auto_optimize, true),
+    optimization_mode: normalizeOptimizationMode(body.optimization_mode, booleanPreference(body.auto_optimize, true)),
   };
 }
 
@@ -5792,27 +6344,61 @@ async function saveGeneratedImageFile({
   };
 }
 
-async function generateImageFile({ prompt, size, prefix = "kv-free" }) {
+async function readImageStream(response, onPartial = null) {
+  if (!response.ok || !response.body) return null;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let lastImage = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() || "";
+    for (const chunk of chunks) {
+      const data = chunk.split("\n").filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("");
+      if (!data || data === "[DONE]") continue;
+      const event = JSON.parse(data);
+      if (event.error) throw new Error(event.error.message || "Images API 流式生成失败");
+      if (event.b64_json) {
+        lastImage = event.b64_json;
+        if (event.type === "image_generation.partial_image" && onPartial) await onPartial(event.b64_json, event.partial_image_index || 0);
+      }
+    }
+  }
+  return lastImage;
+}
+
+async function generateImageFile({ prompt, size, prefix = "kv-free", quality = "medium", partialImages = 0, onPartial = null }) {
   if (!OPENAI_API_KEY) {
     return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
   }
-  const response = await fetch("https://api.openai.com/v1/images/generations", {
+  const requestBody = {
+    model: IMAGE_MODEL,
+    prompt,
+    size: size || "1024x1024",
+    quality,
+    output_format: "png",
+    ...(partialImages > 0 ? { stream: true, partial_images: Math.min(3, partialImages) } : {}),
+  };
+  const response = await fetch(`${OPENAI_BASE_URL}/images/generations`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${OPENAI_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: IMAGE_MODEL,
-      prompt,
-      size: size || "1024x1024",
-      quality: "medium",
-      output_format: "png",
-    }),
+    body: JSON.stringify(requestBody),
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error?.message || `OpenAI Images API 请求失败：${response.status}`);
-  const b64 = payload.data?.[0]?.b64_json;
+  let b64 = "";
+  let payload = {};
+  if (partialImages > 0 && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+    b64 = await readImageStream(response, onPartial);
+  } else {
+    payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error?.message || `OpenAI Images API 请求失败：${response.status}`);
+    b64 = payload.data?.[0]?.b64_json;
+  }
   if (!b64) throw new Error("Images API 没有返回 b64_json");
   return saveGeneratedImageFile({ b64, prompt, size, prefix });
 }
@@ -5825,6 +6411,9 @@ async function generateImageEditFile({
   applyOverlay = false,
   overlayRequest = {},
   keepTemp = false,
+  quality = "medium",
+  partialImages = 0,
+  onPartial = null,
 }) {
   if (!OPENAI_API_KEY) {
     return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
@@ -5834,29 +6423,47 @@ async function generateImageEditFile({
   }
 
   const images = await fetchImageBytes(selected);
-  const form = new FormData();
-  form.append("model", IMAGE_MODEL);
-  form.append("prompt", prompt);
-  form.append("size", size || "1024x1024");
-  form.append("quality", "medium");
-  form.append("output_format", "png");
+  const buildForm = (withStreaming) => {
+    const form = new FormData();
+    form.append("model", IMAGE_MODEL);
+    form.append("prompt", prompt);
+    form.append("size", size || "1024x1024");
+    form.append("quality", quality);
+    form.append("output_format", "png");
+    if (withStreaming) {
+      form.append("stream", "true");
+      form.append("partial_images", String(Math.min(3, partialImages)));
+    }
+    for (const image of images) {
+      form.append("image[]", new Blob([image.bytes], { type: image.type }), image.filename);
+    }
+    return form;
+  };
 
-  for (const image of images) {
-    form.append("image[]", new Blob([image.bytes], { type: image.type }), image.filename);
-  }
-
-  const response = await fetch("https://api.openai.com/v1/images/edits", {
+  let form = buildForm(partialImages > 0);
+  let response = await fetch(`${OPENAI_BASE_URL}/images/edits`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
     body: form,
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload.error?.message || `OpenAI Images API 请求失败：${response.status}`;
-    throw new Error(message);
+  let b64 = "";
+  let payload = {};
+  if (partialImages > 0 && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+    b64 = await readImageStream(response, onPartial);
+  } else {
+    payload = await response.json().catch(() => ({}));
+    if (!response.ok && partialImages > 0 && response.status === 400) {
+      form = buildForm(false);
+      response = await fetch(`${OPENAI_BASE_URL}/images/edits`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
+        body: form,
+      });
+      payload = await response.json().catch(() => ({}));
+    }
+    if (!response.ok) throw new Error(payload.error?.message || `OpenAI Images API 请求失败：${response.status}`);
+    b64 = payload.data?.[0]?.b64_json;
   }
-
-  const b64 = payload.data?.[0]?.b64_json;
   if (!b64) throw new Error("Images API 没有返回 b64_json");
   return saveGeneratedImageFile({
     b64,
@@ -6093,15 +6700,42 @@ function buildCompactExecutionPrompt(request, design, selected = [], correction 
   return buildFinalKvFromTypographyPrompt(request, design, sceneReferences(selected), correction);
 }
 
-async function generateLayeredImage(request, design, selected, onStage = () => {}, correction = "") {
+function buildSkillExecutionPrompt(basePrompt, skillPlan, { hasTypographyLayer = false } = {}) {
+  const mapping = hasTypographyLayer
+    ? [
+        "Image 1 is the generated typography/layout layer and is the fixed edit foundation. Preserve its text, hierarchy and existing decoration.",
+        "Images 2+ from the Skill library are design-language references only.",
+      ]
+    : ["Image 1 is the design-language reference only."];
+  return [
+    ...mapping,
+    "From design-language references, transfer only composition principles, abstraction, shape language, color relationships and surface grammar.",
+    "Do not copy their specific people, products, text, brands, logos or complete layout.",
+    "",
+    "【GPT-5.5 generation plan】",
+    skillPlan?.generation_prompt || "",
+    "",
+    "【Content invariants】",
+    ...(skillPlan?.content_invariants || []).map((item) => `- ${item}`),
+    "",
+    "【Style invariants】",
+    ...(skillPlan?.style_invariants || []).map((item) => `- ${item}`),
+    "",
+    "【Existing two-stage execution constraints】",
+    basePrompt,
+  ].filter((item) => item !== "").join("\n");
+}
+
+async function generateLayeredImage(request, design, selected, onStage = () => {}, correction = "", options = {}) {
   const integrated = integratedLayoutReference(selected);
   if (!integrated || !hasVisibleTypography(request)) {
-    const prompt = buildCompactOneShotPrompt(request, design, selected, correction);
-    const image = await generateImage(request, prompt, selected);
+    const basePrompt = buildCompactOneShotPrompt(request, design, selected, correction);
+    const prompt = options.skillPlan ? buildSkillExecutionPrompt(basePrompt, options.skillPlan) : basePrompt;
+    const image = await generateImage(request, prompt, selected, options);
     return { image, prompt, mode: "one-shot" };
   }
 
-  const size = SIZE_MAP[request.image_size] || "1024x1024";
+  const size = options.size || SIZE_MAP[request.image_size] || "1024x1024";
   const typographyPrompt = buildTypographyLayerPrompt(request, integrated, correction);
   onStage("status", { message: "正在生成第一步文字版式图..." });
   const typography = await generateImageEditFile({
@@ -6109,6 +6743,7 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
     selected: [integrated],
     size,
     prefix: "kv-typography",
+    quality: options.quality || "medium",
   });
   if (typography.skipped) {
     return {
@@ -6128,7 +6763,10 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
   );
   const sceneSelected = sceneReferences(selected).slice(0, 9);
   const finalSelected = [stageOneReference, ...sceneSelected];
-  const finalPrompt = buildFinalKvFromTypographyPrompt(request, design, sceneSelected, correction);
+  const baseFinalPrompt = buildFinalKvFromTypographyPrompt(request, design, sceneSelected, correction);
+  const finalPrompt = options.skillPlan
+    ? buildSkillExecutionPrompt(baseFinalPrompt, options.skillPlan, { hasTypographyLayer: true })
+    : baseFinalPrompt;
 
   onStage("status", { message: "正在以第一步版式图为固定参考生成完整 KV..." });
   const finalImage = await generateImageEditFile({
@@ -6138,6 +6776,9 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
     prefix: "kv-two-stage",
     applyOverlay: true,
     overlayRequest: request,
+    quality: options.quality || "medium",
+    partialImages: options.partialImages || 0,
+    onPartial: options.onPartial || null,
   });
   if (finalImage.skipped) {
     return {
@@ -6172,7 +6813,7 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
   };
 }
 
-async function generateImage(request, prompt, selected) {
+async function generateImage(request, prompt, selected, options = {}) {
   if (!OPENAI_API_KEY) {
     return { skipped: true, reason: "缺少 OPENAI_API_KEY，已跳过最终生图。" };
   }
@@ -6183,10 +6824,13 @@ async function generateImage(request, prompt, selected) {
   const result = await generateImageEditFile({
     prompt,
     selected,
-    size: SIZE_MAP[request.image_size] || "1024x1024",
+    size: options.size || SIZE_MAP[request.image_size] || "1024x1024",
     prefix: "kv",
     applyOverlay: true,
     overlayRequest: request,
+    quality: options.quality || "medium",
+    partialImages: options.partialImages || 0,
+    onPartial: options.onPartial || null,
   });
   delete result.output_path;
   delete result.prompt;
@@ -6521,6 +7165,9 @@ async function runPipeline(request, onStage = () => {}) {
   ]));
   const activePreset = presetForRequest(request);
   const knowledge = productionKnowledgeForRequest(request, activePreset);
+  const skillLoadStartedAt = Date.now();
+  const skillRuntime = loadSkillRuntime(activePreset);
+  stageTimings.skill_load_ms = Date.now() - skillLoadStartedAt;
   const warnings = [];
   let fallback = false;
 
@@ -6551,15 +7198,9 @@ async function runPipeline(request, onStage = () => {}) {
   }
   onStage("brief", { brief });
 
-  onStage("status", { message: "正在拆解约束并生成 3 个创意方向..." });
-  let creativePlan;
-  try {
-    creativePlan = await measure("creative_direction", () => generateCreativePlan(request, brief, activePreset, knowledge));
-  } catch (error) {
-    fallback = true;
-    warnings.push({ stage: "creative", message: error.message });
-    creativePlan = localCreativePlan(request, brief, knowledge, activePreset);
-  }
+  onStage("status", { message: "正在按 Skill 拆解 Brief 与创意骨架..." });
+  const creativePlan = localCreativePlan(request, brief, knowledge, activePreset);
+  stageTimings.creative_local = 0;
   onStage("creative", { creative_plan: creativePlan });
 
   const referencePreset = activePreset;
@@ -6610,7 +7251,7 @@ async function runPipeline(request, onStage = () => {}) {
 
   onStage("status", { message: "正在把选定创意与参考图转成可执行设计大纲..." });
   let design = initialDesign;
-  if (ENABLE_DESIGN_LLM) {
+  if (ENABLE_DESIGN_LLM && !skillRuntime.content) {
     try {
       const modelDesign = await measure("design_llm", () => callResponses({
       system: designSystem,
@@ -6671,8 +7312,41 @@ async function runPipeline(request, onStage = () => {}) {
   const doudouReferences = selectDoudouReferences(request, design);
   const promptReferences = prioritizeGenerationReferences([...presetReferences, ...doudouReferences, ...uploadedReferences]);
 
+  onStage("status", { message: "正在用 GPT-5.5 读取完整 Skill、Brief 与风格参考..." });
+  onStage("optimization_status", { status: "planning", message: "正在规划主视觉" });
+  const planningStartedAt = Date.now();
+  let skillPlanning;
+  try {
+    skillPlanning = await planSkillGeneration({
+      request,
+      brief,
+      skill: skillRuntime,
+      references: promptReferences,
+      basePrompt: buildCompactExecutionPrompt(request, design, promptReferences),
+    });
+  } catch (error) {
+    fallback = true;
+    warnings.push({ stage: "skill-planning", message: error.message });
+    const styleReference = designLanguageReference(promptReferences);
+    const fingerprint = await styleFingerprintFor(skillRuntime, styleReference).catch(() => ({ fingerprint: "遵守完整 Skill 规则", cache_hit: false }));
+    skillPlanning = {
+      plan: localSkillPlan(request, skillRuntime, fingerprint, buildCompactExecutionPrompt(request, design, promptReferences)),
+      fingerprint,
+      styleReference,
+    };
+  }
+  stageTimings.planning_ms = Date.now() - planningStartedAt;
+  const skillPlan = skillPlanning.plan;
+  onStage("skill_plan", {
+    skill_id: skillRuntime.id,
+    skill_version: skillRuntime.version,
+    plan: skillPlan,
+    fingerprint_cache_hit: Boolean(skillPlanning.fingerprint?.cache_hit),
+  });
+
   onStage("status", { message: "正在进行美术总监生成前评审..." });
-  const preflightReview = await measure("preflight_review", () => reviewDesignPreflight(request, brief, creativePlan, design, promptReferences, knowledge));
+  const preflightReview = localPreflightReview(request, creativePlan, design, promptReferences);
+  stageTimings.preflight_local = 0;
   design = applyCreativePlanToDesign(applyPreflightDesignPatch(design, preflightReview), creativePlan);
   design = applyIntegratedLayoutToDesign(design, selectedPresetVariant, request);
   design = applySkillRoutingToDesign(
@@ -6685,66 +7359,41 @@ async function runPipeline(request, onStage = () => {}) {
   onStage("materials", { selected_materials: promptReferences });
 
   onStage("status", { message: "正在生成精简的分层执行 Prompt..." });
-  let finalPrompt = buildCompactExecutionPrompt(request, design, promptReferences);
+  let finalPrompt = buildSkillExecutionPrompt(
+    buildCompactExecutionPrompt(request, design, promptReferences),
+    skillPlan,
+    { hasTypographyLayer: Boolean(integratedLayoutReference(promptReferences) && hasVisibleTypography(request)) },
+  );
   stageTimings.prompt_local = 0;
   onStage("prompt", { final_prompt: finalPrompt });
 
   const imageIterations = [];
   onStage("status", { message: request.generate_image ? "正在启动分层生图..." : "未勾选生成最终 KV 图。" });
+  if (request.generate_image) onStage("optimization_status", { status: "generating", message: "正在生成初稿" });
+  const imageStartedAt = Date.now();
   let generationResult = request.generate_image
-    ? await measure("image_generation", () => generateLayeredImage(request, design, promptReferences, onStage))
+    ? await measure("image_generation", () => generateLayeredImage(request, design, promptReferences, onStage, "", {
+        skillPlan,
+        quality: "low",
+        size: request.image_size === "3:4" ? "768x1024" : (SIZE_MAP[request.image_size] || "1024x1024"),
+        partialImages: 1,
+        onPartial: async (b64) => {
+          onStage("image_preview", { image_preview: { url: `data:image/png;base64,${b64}`, temporary: true } });
+        },
+      }))
     : {
         image: { skipped: true, reason: "未勾选生成最终 KV 图。" },
         prompt: finalPrompt,
         mode: "skipped",
       };
   let imageResult = generationResult.image;
+  stageTimings.first_image_ms = Date.now() - imageStartedAt;
   finalPrompt = generationResult.prompt || finalPrompt;
-  onStage("image", { image_result: imageResult });
+  onStage("draft_ready", { image_result: imageResult, label: "初稿" });
+  onStage("image", { image_result: imageResult, label: "初稿" });
 
   let qualityReview = localImageQualityReview(imageResult?.reason || "");
-  if (!imageResult.skipped) {
-    if (ENABLE_POST_IMAGE_REVIEW) {
-      onStage("status", { message: "正在进行美术总监成图评审..." });
-      qualityReview = await measure("post_image_review", () => reviewGeneratedImage(imageResult, request, creativePlan, design, promptReferences, knowledge));
-    } else {
-      qualityReview = {
-        ...localImageQualityReview(),
-        source: "fast-path-not-blocking",
-        decision: "deferred",
-        warning: "",
-      };
-    }
-    imageIterations.push({ iteration: 1, image_result: imageResult, quality_review: qualityReview });
-    onStage("quality", { quality_review: qualityReview, iteration: 1 });
-
-    let retryCount = 0;
-    while (
-      AUTO_ART_DIRECTOR_RETRY
-      && retryCount < ART_DIRECTOR_RETRY_LIMIT
-      && qualityReview.hard_constraint_pass === false
-      && Array.isArray(qualityReview.blocking_issues)
-      && qualityReview.blocking_issues.length
-    ) {
-      retryCount += 1;
-      const correction = textOf(qualityReview.correction_prompt).trim()
-        || qualityReview.corrections?.join("；")
-        || qualityReview.blocking_issues.join("；");
-      finalPrompt = buildCompactExecutionPrompt(request, design, promptReferences, correction);
-      onStage("prompt", { final_prompt: finalPrompt, revision: retryCount });
-      onStage("status", { message: `检测到硬性问题，正在进行第 ${retryCount} 次定向返修...` });
-      generationResult = await measure(
-        "image_retry",
-        () => generateLayeredImage(request, design, promptReferences, onStage, correction),
-      );
-      imageResult = generationResult.image;
-      finalPrompt = generationResult.prompt || finalPrompt;
-      onStage("image", { image_result: imageResult, revision: retryCount });
-      qualityReview = await measure("post_image_review", () => reviewGeneratedImage(imageResult, request, creativePlan, design, promptReferences, knowledge));
-      imageIterations.push({ iteration: retryCount + 1, image_result: imageResult, quality_review: qualityReview });
-      onStage("quality", { quality_review: qualityReview, iteration: retryCount + 1 });
-    }
-  }
+  if (!imageResult.skipped) imageIterations.push({ iteration: 1, image_result: imageResult, quality_review: qualityReview });
 
   const result = {
     request,
@@ -6771,12 +7420,13 @@ async function runPipeline(request, onStage = () => {}) {
       cases: (knowledge.cases || []).map((item) => ({ id: item.id, name: item.name, score: item.score })),
     },
     final_prompt: finalPrompt,
+    skill_plan: skillPlan,
     image_result: imageResult,
     quality_review: qualityReview,
     image_iterations: imageIterations,
     fallback,
     warnings,
-    models: { text: TEXT_MODEL, image: IMAGE_MODEL },
+    models: { text: TEXT_MODEL, skill: SKILL_TEXT_MODEL, image: IMAGE_MODEL },
     performance: {
       mode: PIPELINE_MODE,
       target_ms: 180000,
@@ -6784,17 +7434,44 @@ async function runPipeline(request, onStage = () => {}) {
       stages: stageTimings,
       llm_policy: {
         brief: ENABLE_BRIEF_LLM ? "llm" : "local",
-        creative: ENABLE_CREATIVE_LLM ? "llm" : "local",
+        creative: "local-before-skill-plan",
         reference_rerank: ENABLE_REFERENCE_LLM_RERANK ? "llm" : "semantic-contextual",
         design: ENABLE_DESIGN_LLM ? "llm" : "local",
         preflight: ENABLE_PREFLIGHT_LLM ? "llm" : "local",
         prompt: "compact-layered-local",
-        post_image_review: ENABLE_POST_IMAGE_REVIEW ? "llm" : "deferred",
-        auto_image_retry: AUTO_ART_DIRECTOR_RETRY,
+        post_image_review: request.optimization_mode === "fast" ? "skipped-fast" : "deferred-job",
+        auto_image_retry: false,
       },
     },
   };
   if (imageResult && !imageResult.skipped) {
+    const optimizationMode = normalizeOptimizationMode(request.optimization_mode, request.auto_optimize);
+    const timing = {
+      skill_load_ms: stageTimings.skill_load_ms || 0,
+      planning_ms: stageTimings.planning_ms || 0,
+      first_image_ms: stageTimings.first_image_ms || stageTimings.image_generation || 0,
+      review_ms: 0,
+      edit_ms: 0,
+      total_ms: Date.now() - pipelineStartedAt,
+    };
+    const job = await createSkillOptimizationJob({
+      result,
+      skill: skillRuntime,
+      skillPlan,
+      styleReference: skillPlanning.styleReference,
+      mode: optimizationMode,
+      timing,
+    });
+    result.optimization_job_id = job.id;
+    result.optimization = decorateGenerationJob(job);
+    result.performance.skill_optimization = {
+      mode: optimizationMode,
+      status: job.status,
+      metrics: summarizeTimingSamples([timing]),
+    };
+    if (optimizationMode === "fast") {
+      result.performance.skill_optimization.metrics = await appendTimingSample(timing).catch(() => summarizeTimingSamples([timing]));
+    }
     try {
       await persistAssetRecord(result);
     } catch (error) {
@@ -6926,11 +7603,13 @@ const server = createServer(async (req, res) => {
       jsonResponse(res, 200, {
         ok: true,
         has_api_key: Boolean(OPENAI_API_KEY),
-        models: { text: TEXT_MODEL, image: IMAGE_MODEL },
+        models: { text: TEXT_MODEL, skill: SKILL_TEXT_MODEL, image: IMAGE_MODEL },
         capabilities: {
           brand_overlay_engine: "pngjs+resvg-wasm",
           brand_overlay_loading: "lazy",
           brand_overlay_python_required: false,
+          skill_auto_optimization: true,
+          skill_revision_threshold: SKILL_REVISION_THRESHOLD,
         },
         pipeline: {
           mode: PIPELINE_MODE,
@@ -7284,6 +7963,45 @@ const server = createServer(async (req, res) => {
       if (!applyRateLimit(req, res, RATE_LIMIT_EXPAND_PER_MIN)) return;
       const body = validateExpandRequest(await readJsonBody(req));
       jsonResponse(res, 200, await expandVisualDescription(body));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/generation-metrics") {
+      const samples = await loadTimingSamples();
+      jsonResponse(res, 200, summarizeTimingSamples(samples));
+      return;
+    }
+
+    const generationJobMatch = url.pathname.match(/^\/api\/generation-jobs\/([^/]+)$/);
+    if (generationJobMatch && req.method === "GET") {
+      const job = await loadGenerationJob(decodeURIComponent(generationJobMatch[1]));
+      if (!job) {
+        jsonResponse(res, 404, { error: "未找到该生成任务" });
+        return;
+      }
+      jsonResponse(res, 200, decorateGenerationJob(job));
+      return;
+    }
+
+    const optimizationStreamMatch = url.pathname.match(/^\/api\/generation-jobs\/([^/]+)\/optimize-stream$/);
+    if (optimizationStreamMatch && req.method === "POST") {
+      if (!requireAdmin(req, res)) return;
+      if (!applyRateLimit(req, res, RATE_LIMIT_RUN_PER_MIN)) return;
+      const jobId = decodeURIComponent(optimizationStreamMatch[1]);
+      const body = await readJsonBody(req).catch(() => ({}));
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+      });
+      try {
+        const job = await runSkillOptimization(jobId, (event, payload) => sseWrite(res, event, payload), { retry: body.retry === true });
+        sseWrite(res, "complete", { job });
+      } catch (error) {
+        sseWrite(res, "error", { error: error.message || "自动优化失败" });
+      } finally {
+        res.end();
+      }
       return;
     }
 

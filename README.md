@@ -189,6 +189,29 @@ PIPELINE_MODE=quality node server.mjs
 
 也可以逐项覆盖：`ENABLE_BRIEF_LLM`、`ENABLE_REFERENCE_LLM_RERANK`、`ENABLE_DESIGN_LLM`、`ENABLE_PREFLIGHT_LLM`、`ENABLE_POST_IMAGE_REVIEW`、`AUTO_ART_DIRECTOR_RETRY`。创意阶段在快速模式默认最多传 3 张低细节案例图，可通过 `CREATIVE_EVIDENCE_IMAGE_LIMIT` 和 `CREATIVE_EVIDENCE_IMAGE_DETAIL` 调整。
 
+### Skill 初稿与自动优化
+
+技能模式继续保留“标题版式图 → 完整 KV”的既有两阶段语义。完整 KV 初稿生成前，服务端读取所选 Skill 的完整 Markdown，并将 Skill、用户 Brief、最终选中的 `reference-library` 设计语法参考和现有约束合并为一次结构化规划。完整 KV 初稿保存后立即通过 SSE 返回；智能优化模式再由前端发起独立评审请求，避免单个 Vercel 请求同时承担规划、两次图片生成、评审和编辑。
+
+- `快速生成`：完整 KV 使用 `gpt-image-2` 的 `low` quality，不评审、不自动编辑。
+- `智能优化`：初稿先返回；GPT-5.5 以低细节图片和低推理强度只判断一个最大结构问题。严重度达到阈值时，最多调用一次 `images.edit`，第一张输入固定为初稿编辑目标，第二张固定为 `reference-library` 设计语法参考。
+- 3:4 技能初稿默认使用 `768x1024`；其他画幅沿用现有尺寸映射。
+- Skill 版本与参考图内容哈希组成风格指纹缓存键，缓存写入 `data/skill-fingerprints.json`。
+- 任务写入 `data/generation-jobs/<id>.json`，耗时样本和 P50/P95 写入 `data/generation-metrics.json`。OSS 后端只持久化 object key，对外读取时再生成签名 URL。
+- `GET /api/generation-jobs/:id` 读取任务；`POST /api/generation-jobs/:id/optimize-stream` 启动或重试一次优化；`GET /api/generation-metrics` 读取阶段耗时统计。
+
+可选环境变量：
+
+```text
+OPENAI_SKILL_MODEL=gpt-5.5
+SKILL_REVISION_THRESHOLD=0.65
+SKILL_PLANNING_REASONING_EFFORT=low
+SKILL_REVIEW_REASONING_EFFORT=low
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+生成记录会同时保存初稿与最终图 object key、Skill ID/版本、生成 Prompt、评审结果、是否触发优化、优化状态、错误和阶段耗时。优化失败时任务以初稿作为可用最终结果，保留错误并允许用户点击“重新优化”；自动尝试本身不会超过一次。
+
 ## 模块边界
 
 - `services/inspiration/keyword-expander.mjs`：主题词扩展。

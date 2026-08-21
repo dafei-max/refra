@@ -63,6 +63,7 @@
               <input id="stylePresetInput" type="hidden" name="style_preset" value="none" />
               <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
               <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
+              <input id="optimizationModeInput" type="hidden" name="optimization_mode" value="smart" />
               <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
               <input name="generate_image" type="checkbox" checked hidden />
               <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
@@ -107,6 +108,15 @@
                     <img class="tool-icon-img" src="/ui-assets/size.png" alt="" />
                     <span>扩写</span>
                   </button>
+                  <div class="generation-mode-control" role="group" aria-label="生成模式">
+                    <button type="button" data-generation-mode="fast">快速生成</button>
+                    <button type="button" data-generation-mode="smart" class="active">智能优化</button>
+                  </div>
+                  <label class="auto-optimize-toggle" title="初稿完成后自动检查并最多优化一次">
+                    <input id="autoOptimizeInput" type="checkbox" checked />
+                    <span class="auto-optimize-switch" aria-hidden="true"></span>
+                    <span>自动优化</span>
+                  </label>
                   <button type="button" class="tool-button doudou-toggle" id="doudouIpButton" aria-pressed="false">
                     <img class="tool-icon-img doudou-icon" src="/doudou/6视图/22-1.png" alt="" />
                     <span>兜兜IP</span>

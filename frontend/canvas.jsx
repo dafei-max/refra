@@ -42,19 +42,40 @@ function canvasAspectRatio(value = "3:4") {
 function ImageNode({ data, selected }) {
   const [splitting, setSplitting] = useState(false);
   const [branding, setBranding] = useState(false);
+  const showingDraft = data.displayVersion !== "final" || !data.finalUrl;
+  const visibleUrl = showingDraft ? (data.draftUrl || data.url) : data.finalUrl;
+  const visibleObjectKey = showingDraft
+    ? (data.draftObjectKey || data.objectKey)
+    : (data.finalObjectKey || data.objectKey);
+  const actionData = { ...data, url: visibleUrl, objectKey: visibleObjectKey };
   const download = () => {
     const link = document.createElement("a");
-    link.href = data.url;
+    link.href = visibleUrl;
     link.download = data.name || "kv.png";
     link.click();
   };
 
   return (
     <div className={`cf-node${selected ? " selected" : ""}`}>
-      <img src={data.url} alt={data.name || ""} />
+      <img src={visibleUrl} alt={data.name || ""} />
+      {data.optimizationStatus && (
+        <div className="cf-node-version-bar" onClick={(event) => event.stopPropagation()}>
+          <span className={`cf-version-badge ${showingDraft ? "draft" : "final"}`}>{showingDraft ? "初稿" : "优化版"}</span>
+          {data.finalUrl && data.finalUrl !== data.draftUrl ? (
+            <div className="cf-version-switch">
+              <button type="button" className={showingDraft ? "active" : ""} onClick={() => data.onVersion?.(data.nodeId, "draft")}>查看初稿</button>
+              <button type="button" className={!showingDraft ? "active" : ""} onClick={() => data.onVersion?.(data.nodeId, "final")}>查看优化版</button>
+            </div>
+          ) : null}
+          {["failed", "review_failed"].includes(data.optimizationStatus) ? (
+            <button type="button" className="cf-retry-optimization" onClick={() => data.onRetry?.(data)}>重新优化</button>
+          ) : null}
+        </div>
+      )}
+      {data.optimizationReason && !showingDraft ? <div className="cf-node-optimization-reason">已优化：{data.optimizationReason}</div> : null}
       {selected && (
         <div className="cf-node-toolbar">
-          <button type="button" onClick={(event) => { event.stopPropagation(); window.open(data.url, "_blank"); }}>
+          <button type="button" onClick={(event) => { event.stopPropagation(); window.open(visibleUrl, "_blank"); }}>
             <span className="hd-badge">HD</span>放大
           </button>
           <button
@@ -64,7 +85,7 @@ function ImageNode({ data, selected }) {
               event.stopPropagation();
               if (splitting) return;
               setSplitting(true);
-              try { await data.onSplit?.(data); } finally { setSplitting(false); }
+              try { await data.onSplit?.(actionData); } finally { setSplitting(false); }
             }}
           >
             <img src="/ui-assets/icon/canvas-split.svg" alt="" />{splitting ? "拆分中" : "拆分图层"}
@@ -81,7 +102,7 @@ function ImageNode({ data, selected }) {
               event.stopPropagation();
               if (branding) return;
               setBranding(true);
-              try { await data.onBrand?.(data); } finally { setBranding(false); }
+              try { await data.onBrand?.(actionData); } finally { setBranding(false); }
             }}
           >
             {branding ? "处理中" : "抖音商城logo"}
@@ -96,7 +117,9 @@ function LoadingNode({ data }) {
   return (
     <div className="cf-generation-loading" style={{ width: data.width || 260 }}>
       <div className="cf-generation-loading-label">{data.label || "图片正在生成中......"}</div>
-      <div className="cf-generation-loading-card" style={{ aspectRatio: data.aspectRatio || "3 / 4" }} />
+      <div className={`cf-generation-loading-card${data.previewUrl ? " has-preview" : ""}`} style={{ aspectRatio: data.aspectRatio || "3 / 4" }}>
+        {data.previewUrl ? <img src={data.previewUrl} alt="生成预览" /> : null}
+      </div>
     </div>
   );
 }
@@ -129,7 +152,7 @@ function CanvasApp() {
   const [session, setSession] = useState(null);
   const [title, setTitle] = useState("Untitled");
   const [editingTitle, setEditingTitle] = useState(false);
-  const [composerSettings, setComposerSettings] = useState({ image_size: "3:4", style_name: "技能" });
+  const [composerSettings, setComposerSettings] = useState({ image_size: "3:4", style_name: "技能", optimization_mode: "smart", auto_optimize: true });
   const [flowInstance, setFlowInstance] = useState(null);
   const [composerHasText, setComposerHasText] = useState(false);
   const [composerReferences, setComposerReferences] = useState([]);
@@ -145,6 +168,7 @@ function CanvasApp() {
   const lastTypoRef = useRef(null);
   const splitLocksRef = useRef(new Set());
   const brandLocksRef = useRef(new Set());
+  const optimizationLocksRef = useRef(new Set());
   const chatPanelRef = useRef(null);
   const chatInputRef = useRef(null);
   const nodesRef = useRef([]);
@@ -232,6 +256,8 @@ function CanvasApp() {
         label: labels[kind] || "完整 KV",
         onSplit: (data) => splitHandlerRef.current(data),
         onBrand: (data) => brandHandlerRef.current(data),
+        onVersion: (nodeId, version) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, displayVersion: version } } : item)),
+        onRetry: (data) => optimizationHandlerRef.current(data.optimizationJobId, true),
       },
     };
     pushHistory();
@@ -241,6 +267,14 @@ function CanvasApp() {
     }
     return node;
   }, [pushHistory, setNodes]);
+
+  const updateOptimizationNode = useCallback((objectKey, patch) => {
+    setNodes((current) => current.map((node) => (
+      node.data?.objectKey === objectKey || node.data?.draftObjectKey === objectKey
+        ? { ...node, data: { ...node.data, ...patch } }
+        : node
+    )));
+  }, [setNodes]);
 
   const parseSse = useCallback(async (response, context = {}) => {
     requireInvite(response);
@@ -268,6 +302,16 @@ function CanvasApp() {
         const payload = JSON.parse(dataLine);
         if (event === "status") {
           updateStatusMessage(payload.message || "正在生成…");
+        } else if (event === "optimization_status") {
+          updateStatusMessage(payload.message || (payload.status === "reviewing" ? "正在检查画面结构" : "正在优化主视觉关系"));
+          const draftKey = payload.job?.draft_image?.object_key;
+          if (draftKey) updateOptimizationNode(draftKey, {
+            optimizationStatus: payload.status,
+            optimizationReason: payload.reason || payload.job?.review_result?.max_problem || "",
+          });
+        } else if (event === "image_preview") {
+          const previewUrl = payload.image_preview?.url;
+          if (previewUrl) setLoadingNode((current) => current ? { ...current, data: { ...current.data, previewUrl } } : current);
         } else if (event === "typography") {
           const layer = payload.typography_layer;
           if (layer && !layer.skipped) addImageNode("typography", layer.url, layer.name, layer.object_key);
@@ -279,6 +323,47 @@ function CanvasApp() {
           if (image && !image.skipped && image.url) {
             appendMessage("assistant", "", { image: image.url, imageObjectKey: image.object_key || "", imageName: image.name });
           }
+        } else if (event === "optimized_image") {
+          const image = payload.image_result;
+          const job = payload.job;
+          const draftKey = job?.draft_image?.object_key || image?.draft_object_key;
+          if (image?.url && draftKey) {
+            updateOptimizationNode(draftKey, {
+              draftObjectKey: draftKey,
+              draftUrl: job?.draft_image?.url || "",
+              finalUrl: image.url,
+              finalObjectKey: image.object_key || "",
+              objectKey: image.object_key || draftKey,
+              url: image.url,
+              name: image.name || "",
+              displayVersion: "final",
+              optimizationStatus: "completed",
+              optimizationReason: job?.review_result?.max_problem || "",
+            });
+            appendMessage("assistant", "优化完成", { image: image.url, imageObjectKey: image.object_key || "", imageName: image.name });
+          }
+        } else if (event === "optimization_error") {
+          const job = payload.job;
+          const draftKey = job?.draft_image?.object_key;
+          if (draftKey) updateOptimizationNode(draftKey, {
+            optimizationStatus: job?.optimization_status || "failed",
+            optimizationJobId: job?.id || "",
+          });
+          updateStatusMessage(`自动优化未完成，初稿已保留：${payload.message || "可稍后重试"}`);
+        } else if (event === "optimization_complete") {
+          const job = payload.job;
+          const draftKey = job?.draft_image?.object_key;
+          if (draftKey) updateOptimizationNode(draftKey, {
+            optimizationStatus: job?.optimization_status || "completed",
+            optimizationJobId: job?.id || "",
+            optimizationReason: job?.review_result?.max_problem || "",
+            draftUrl: job?.draft_image?.url || "",
+            finalUrl: job?.final_image?.url || job?.draft_image?.url || "",
+            finalObjectKey: job?.final_image?.object_key || job?.draft_image?.object_key || "",
+            objectKey: job?.final_image?.object_key || job?.draft_image?.object_key || draftKey,
+            url: job?.final_image?.url || job?.draft_image?.url || "",
+            displayVersion: job?.optimization_triggered ? "final" : "draft",
+          });
         } else if (event === "complete") {
           return payload;
         } else if (event === "error") {
@@ -287,7 +372,27 @@ function CanvasApp() {
       }
     }
     throw new Error("链路中断：服务端未返回完成事件");
-  }, [addImageNode, appendMessage, updateStatusMessage]);
+  }, [addImageNode, appendMessage, updateStatusMessage, updateOptimizationNode]);
+
+  const runOptimization = useCallback(async (jobId, retry = false) => {
+    if (!jobId || optimizationLocksRef.current.has(jobId)) return;
+    optimizationLocksRef.current.add(jobId);
+    try {
+      const response = await fetch(`/api/generation-jobs/${encodeURIComponent(jobId)}/optimize-stream`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ retry }),
+      });
+      await parseSse(response, { optimization: true });
+    } catch (error) {
+      updateStatusMessage(`自动优化未完成，初稿已保留：${error.message}`);
+    } finally {
+      optimizationLocksRef.current.delete(jobId);
+    }
+  }, [parseSse, updateStatusMessage]);
+
+  const optimizationHandlerRef = useRef(runOptimization);
+  optimizationHandlerRef.current = runOptimization;
 
   const runGeneration = useCallback(async (payload, files = [], options = {}) => {
     if (generating || !session?.projectId) return;
@@ -344,6 +449,8 @@ function CanvasApp() {
         edit_mode: baseNode ? "true" : "false",
         base_image_object_key: baseNode?.data?.objectKey || "",
         conversation_history: JSON.stringify(conversationHistory),
+        optimization_mode: merged.optimization_mode || "smart",
+        auto_optimize: merged.auto_optimize === false ? "false" : "true",
       };
       for (const [key, value] of Object.entries(fields)) body.append(key, String(value));
       const referenceFiles = files.length ? files : (typeof window.__getReferenceFiles === "function" ? window.__getReferenceFiles() : []);
@@ -353,15 +460,33 @@ function CanvasApp() {
       body.append("reference_labels", JSON.stringify(referenceLabels));
       referenceFiles.forEach((file, index) => body.append(`reference_image_${index}`, file, file.name));
       const response = await fetch("/api/run-stream", { method: "POST", headers: authHeaders(), body });
-      await parseSse(response, { outputPosition: baseNode ? outputPosition : null });
-      updateStatusMessage("生成完成");
+      const result = await parseSse(response, { outputPosition: baseNode ? outputPosition : null });
+      const optimization = result?.optimization;
+      const draftKey = optimization?.draft_image?.object_key || result?.image_result?.object_key;
+      if (draftKey && optimization) {
+        updateOptimizationNode(draftKey, {
+          draftObjectKey: draftKey,
+          draftUrl: optimization.draft_image?.url || result?.image_result?.url || "",
+          finalUrl: optimization.final_image?.url || "",
+          optimizationStatus: optimization.optimization_status || "pending",
+          optimizationJobId: optimization.id || result.optimization_job_id || "",
+          displayVersion: "draft",
+          onRetry: (data) => optimizationHandlerRef.current(data.optimizationJobId, true),
+        });
+      }
+      if (optimization?.mode === "smart" && optimization?.status === "draft_ready") {
+        updateStatusMessage("初稿已完成，正在检查画面结构");
+        void runOptimization(optimization.id || result.optimization_job_id);
+      } else {
+        updateStatusMessage("生成完成");
+      }
     } catch (error) {
       updateStatusMessage(`生成失败：${error.message}`);
     } finally {
       setLoadingNode(null);
       setGenerating(false);
     }
-  }, [generating, session, composerSettings.image_size, parseSse, appendMessage, updateStatusMessage]);
+  }, [generating, session, composerSettings.image_size, parseSse, appendMessage, updateStatusMessage, updateOptimizationNode, runOptimization]);
 
   const handleSplit = useCallback(async (data) => {
     const lockKey = data.objectKey || data.name;
@@ -459,6 +584,11 @@ function CanvasApp() {
         kind: node.data?.kind || "kv",
         name: node.data?.name || "",
         object_key: node.data?.objectKey || "",
+        draft_object_key: node.data?.draftObjectKey || "",
+        final_object_key: node.data?.finalObjectKey || "",
+        optimization_job_id: node.data?.optimizationJobId || "",
+        optimization_status: node.data?.optimizationStatus || "",
+        optimization_reason: node.data?.optimizationReason || "",
         x: Math.round(node.position.x),
         y: Math.round(node.position.y),
       })).filter((element) => element.object_key),
@@ -514,6 +644,7 @@ function CanvasApp() {
       lastTypoRef.current = null;
       splitLocksRef.current.clear();
       brandLocksRef.current.clear();
+      optimizationLocksRef.current.clear();
       undoStackRef.current = [];
       redoStackRef.current = [];
       hydratingRef.current = true;
@@ -531,7 +662,7 @@ function CanvasApp() {
       setComposerReferences(window.__getReferencePreviews?.() || []);
       const project = init?.project || null;
       setTitle(project?.title || "Untitled");
-      setComposerSettings({ image_size: "3:4", style_name: "技能", ...(project?.settings || {}) });
+      setComposerSettings({ image_size: "3:4", style_name: "技能", optimization_mode: "smart", auto_optimize: true, ...(project?.settings || {}) });
       window.__applyCanvasSettings?.(project?.settings || {});
       const labels = { typography: "第一步版式图", kv: "完整 KV", title: "标题图层", background: "背景图层" };
       const restored = (project?.elements || []).map((element, index) => ({
@@ -550,6 +681,16 @@ function CanvasApp() {
           label: labels[element.kind] || "完整 KV",
           onSplit: (data) => splitHandlerRef.current(data),
           onBrand: (data) => brandHandlerRef.current(data),
+          onVersion: (nodeId, version) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, displayVersion: version } } : item)),
+          onRetry: (data) => optimizationHandlerRef.current(data.optimizationJobId, true),
+          draftObjectKey: element.draft_object_key || "",
+          draftUrl: element.draft_url || "",
+          finalObjectKey: element.final_object_key || "",
+          finalUrl: element.final_url || element.url || "",
+          optimizationJobId: element.optimization_job_id || "",
+          optimizationStatus: element.optimization_status || "",
+          optimizationReason: element.optimization_reason || "",
+          displayVersion: element.final_object_key ? "final" : "draft",
         },
       }));
       if (restored.length) setNodes(restored);
@@ -859,6 +1000,13 @@ function CanvasApp() {
                 ))}
               </div>
             )}
+            <div className="cf-composer-mode-row">
+              <div className="cf-composer-mode-switch" role="group" aria-label="生成模式">
+                <button type="button" className={composerSettings.optimization_mode === "fast" ? "active" : ""} onClick={() => window.__setCanvasOptimizationMode?.("fast")}>快速生成</button>
+                <button type="button" className={composerSettings.optimization_mode !== "fast" ? "active" : ""} onClick={() => window.__setCanvasOptimizationMode?.("smart")}>智能优化</button>
+              </div>
+              <span className={composerSettings.optimization_mode !== "fast" ? "cf-auto-optimize active" : "cf-auto-optimize"}>自动优化</span>
+            </div>
             <div className="cf-composer-tools">
               <button type="button" className="cf-composer-upload" title="上传参考图" onClick={invokeTool("upload")}><img src="/ui-assets/icon/canvas-upload.png" alt="" /></button>
               <button type="button" onClick={invokeTool("style")}><img src="/ui-assets/icon/skill.svg" alt="" />{composerSettings.style_name || "技能"}</button>

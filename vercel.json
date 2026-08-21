@@ -7,7 +7,8 @@
       "functions": {
         "server.mjs": {
           "regions": ["hnd1"],
-          "includeFiles": "{Brief理解.md,设计判断.md,检索匹配.md,prompt生成.md,font/**,image/**,兜兜/**,uploads/**,data/**,node_modules/@resvg/resvg-wasm/index_bg.wasm}"
+          "maxDuration": 300,
+          "includeFiles": "{Brief理解.md,设计判断.md,检索匹配.md,prompt生成.md,font/**,image/**,style/**,兜兜/**,uploads/**,data/**,node_modules/@resvg/resvg-wasm/index_bg.wasm}"
         }
       }
     }

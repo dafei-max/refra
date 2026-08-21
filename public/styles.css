@@ -3046,6 +3046,66 @@ body {
   font-weight: 500;
 }
 
+.generation-mode-control {
+  display: inline-flex;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid #525252;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.generation-mode-control button {
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.58);
+  font: 300 12px/1 inherit;
+  cursor: pointer;
+}
+
+.generation-mode-control button.active {
+  background: rgba(4, 202, 224, 0.12);
+  color: #04CAE0;
+  font-weight: 500;
+}
+
+.auto-optimize-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.auto-optimize-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+
+.auto-optimize-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 99px;
+  background: #525252;
+  transition: background 160ms ease;
+}
+
+.auto-optimize-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 160ms ease;
+}
+
+.auto-optimize-toggle input:checked + .auto-optimize-switch { background: #04CAE0; }
+.auto-optimize-toggle input:checked + .auto-optimize-switch::after { transform: translateX(12px); }
+
 .dock-tools .tool-button img {
   filter: none !important;
 }
@@ -4377,6 +4437,100 @@ body {
   background: linear-gradient(105deg, transparent 20%, rgba(255, 255, 255, 0.08) 46%, rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0.08) 54%, transparent 80%);
   animation: canvasGenerationShimmer 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+.cf-node-version-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  background: rgba(20, 20, 20, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.cf-version-badge {
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.cf-version-badge.draft { background: rgba(255, 255, 255, 0.14); }
+.cf-version-badge.final { background: rgba(4, 202, 224, 0.22); color: #04CAE0; }
+.cf-version-switch { display: flex; gap: 2px; }
+
+.cf-version-switch button,
+.cf-retry-optimization {
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.66);
+  font: 300 12px/1 inherit;
+  cursor: pointer;
+}
+
+.cf-version-switch button.active { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.cf-retry-optimization { color: #04CAE0; }
+
+.cf-node-optimization-reason {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+  max-width: calc(100% - 20px);
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: rgba(20, 20, 20, 0.8);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-generation-loading-card.has-preview::after { opacity: 0.22; }
+.cf-generation-loading-card.has-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+  opacity: 0.74;
+}
+
+.cf-composer-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 6px;
+}
+
+.cf-composer-mode-switch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cf-composer-mode-switch button {
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.52);
+  font: 300 12px/1 inherit;
+  cursor: pointer;
+}
+
+.cf-composer-mode-switch button.active { background: rgba(4, 202, 224, 0.12); color: #04CAE0; }
+.cf-auto-optimize { color: rgba(255, 255, 255, 0.38); font-size: 12px; }
+.cf-auto-optimize.active { color: #04CAE0; }
 
 @keyframes canvasGenerationShimmer {
   to { transform: translateX(110%); }

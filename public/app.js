@@ -90,6 +90,9 @@ const stylePickerLabel = document.querySelector("#stylePickerLabel");
 const sizePickerButton = document.querySelector("#sizePickerButton");
 const sizePopover = document.querySelector("#sizePopover");
 const imageSizeInput = document.querySelector("#imageSizeInput");
+const optimizationModeInput = document.querySelector("#optimizationModeInput");
+const autoOptimizeInput = document.querySelector("#autoOptimizeInput");
+const generationModeButtons = [...document.querySelectorAll("[data-generation-mode]")];
 const sizeText = document.querySelector("#sizeText");
 const sizeIcon = document.querySelector("#sizeIcon");
 const mentionMenu = document.querySelector("#mentionMenu");
@@ -434,6 +437,14 @@ function setImageSize(value) {
   sizeText.textContent = value;
   sizeIcon.className = `size-icon ratio-${value.replace(":", "")}`;
   renderSizePicker();
+  window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
+}
+
+function setOptimizationMode(value) {
+  const mode = value === "fast" ? "fast" : "smart";
+  optimizationModeInput.value = mode;
+  autoOptimizeInput.checked = mode === "smart";
+  generationModeButtons.forEach((button) => button.classList.toggle("active", button.dataset.generationMode === mode));
   window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
 }
 
@@ -2030,6 +2041,8 @@ window.__getCanvasSettings = () => ({
   include_logo: isToolToggleEnabled(includeLogoButton),
   include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
   style_name: stylePickerLabel.textContent || "技能",
+  optimization_mode: optimizationModeInput.value || "smart",
+  auto_optimize: autoOptimizeInput.checked,
 });
 
 window.__applyCanvasSettings = (settings = {}) => {
@@ -2045,6 +2058,9 @@ window.__applyCanvasSettings = (settings = {}) => {
   }
   if (typeof settings.include_logo === "boolean") setToolToggleEnabled(includeLogoButton, settings.include_logo);
   if (typeof settings.include_search_overlay === "boolean") setToolToggleEnabled(includeSearchOverlayButton, settings.include_search_overlay);
+  if (settings.optimization_mode || typeof settings.auto_optimize === "boolean") {
+    setOptimizationMode(settings.optimization_mode === "fast" || settings.auto_optimize === false ? "fast" : "smart");
+  }
 };
 
 window.__getReferenceFiles = () => referenceFiles.map((item) => item.file);
@@ -2053,6 +2069,7 @@ window.__getReferencePreviews = canvasReferencePreviews;
 window.__removeReferenceFile = removeReferenceFile;
 window.__addReferenceFiles = addReferenceFiles;
 window.__setCanvasImageSize = setImageSize;
+window.__setCanvasOptimizationMode = setOptimizationMode;
 
 window.__canvasReturnedHome = () => {
   showView("generate");
@@ -2086,6 +2103,8 @@ form.addEventListener("submit", async (event) => {
     include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
     files: referenceFiles.map((item) => item.file),
     autoGenerate: true,
+    optimization_mode: optimizationModeInput.value || "smart",
+    auto_optimize: autoOptimizeInput.checked,
   };
   setLoading(true);
   try {
@@ -2135,6 +2154,9 @@ sizePickerButton.addEventListener("click", (event) => {
   sizePopover.classList.toggle("hidden");
   stylePresetSection.classList.add("hidden");
 });
+
+generationModeButtons.forEach((button) => button.addEventListener("click", () => setOptimizationMode(button.dataset.generationMode)));
+autoOptimizeInput.addEventListener("change", () => setOptimizationMode(autoOptimizeInput.checked ? "smart" : "fast"));
 
 document.addEventListener("click", (event) => {
   if (!mentionMenu.contains(event.target) && event.target !== visualDescriptionInput) mentionMenu.classList.add("hidden");
