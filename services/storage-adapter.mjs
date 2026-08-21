@@ -16,6 +16,7 @@ import OSS from "ali-oss";
 const DEFAULT_SIGNED_URL_TTL = 3600;
 const DEFAULT_OSS_REQUEST_TIMEOUT_MS = 5000;
 const DEFAULT_OSS_RETRY_MAX = 2;
+const DEFAULT_OSS_ACCELERATE_ENDPOINT = "oss-accelerate.aliyuncs.com";
 
 export class StorageError extends Error {
   constructor(message, options = {}) {
@@ -29,6 +30,7 @@ export class StorageError extends Error {
 let backend = "fs";
 let runtimeRoot = process.cwd();
 let ossClient = null;
+let ossSigningClient = null;
 let signedUrlTtl = DEFAULT_SIGNED_URL_TTL;
 let initialized = false;
 
@@ -69,7 +71,7 @@ export function initStorage(options = {}) {
       );
     }
     backend = "oss";
-    ossClient = new OSS({
+    const sharedOptions = {
       region,
       bucket,
       accessKeyId,
@@ -77,10 +79,22 @@ export function initStorage(options = {}) {
       secure: true,
       timeout: Number.isFinite(requestTimeoutMs) ? requestTimeoutMs : DEFAULT_OSS_REQUEST_TIMEOUT_MS,
       retryMax: Number.isFinite(retryMax) ? retryMax : DEFAULT_OSS_RETRY_MAX,
+    };
+
+    // Vercel runs outside mainland China. Route server-side object operations
+    // through OSS Transfer Acceleration to avoid the unstable cross-border
+    // connection to the Shanghai regional endpoint. Keep a regional client for
+    // browser-facing signed URLs so ordinary image delivery does not incur
+    // acceleration traffic fees.
+    ossClient = new OSS({
+      ...sharedOptions,
+      endpoint: textOf(env.ALIYUN_OSS_ACCELERATE_ENDPOINT) || DEFAULT_OSS_ACCELERATE_ENDPOINT,
     });
+    ossSigningClient = new OSS(sharedOptions);
   } else {
     backend = "fs";
     ossClient = null;
+    ossSigningClient = null;
   }
   initialized = true;
   return { backend, signedUrlTtl };
@@ -231,7 +245,7 @@ export function storageSignUrl(key, ttlSeconds) {
   const normalized = normalizeKey(key);
   const ttl = Math.max(60, Number(ttlSeconds || signedUrlTtl));
   if (backend === "oss") {
-    return ossClient.signatureUrl(normalized, { expires: ttl, method: "GET" });
+    return ossSigningClient.signatureUrl(normalized, { expires: ttl, method: "GET" });
   }
   if (normalized.startsWith("outputs/")) {
     return `/outputs/${encodeURIComponent(normalized.slice("outputs/".length))}`;
@@ -243,7 +257,10 @@ export function storageSignUrl(key, ttlSeconds) {
 }
 
 export const __storageTesting = {
+  DEFAULT_OSS_ACCELERATE_ENDPOINT,
   DEFAULT_OSS_REQUEST_TIMEOUT_MS,
   DEFAULT_OSS_RETRY_MAX,
+  operationEndpointHostname: () => ossClient?.options?.endpoint?.hostname || "",
+  signingEndpointHostname: () => ossSigningClient?.options?.endpoint?.hostname || "",
   normalizeKey,
 };

@@ -67,3 +67,29 @@ test("OSS 默认启用有界的超时重试", () => {
   assert.equal(__storageTesting.DEFAULT_OSS_REQUEST_TIMEOUT_MS, 5000);
   assert.equal(__storageTesting.DEFAULT_OSS_RETRY_MAX, 2);
 });
+
+test("OSS 服务端读写走传输加速，浏览器签名链接保留区域端点", (t) => {
+  t.after(() => initStorage({ env: { STORAGE_BACKEND: "fs" }, runtimeRoot: tmpdir() }));
+
+  initStorage({
+    env: {
+      STORAGE_BACKEND: "oss",
+      ALIYUN_OSS_REGION: "oss-cn-shanghai",
+      ALIYUN_OSS_BUCKET: "refra-assets",
+      ALIYUN_OSS_ACCESS_KEY_ID: "test-access-key-id",
+      ALIYUN_OSS_ACCESS_KEY_SECRET: "test-access-key-secret",
+    },
+    isVercel: true,
+    runtimeRoot: tmpdir(),
+  });
+
+  assert.equal(
+    __storageTesting.operationEndpointHostname(),
+    __storageTesting.DEFAULT_OSS_ACCELERATE_ENDPOINT,
+  );
+  assert.equal(__storageTesting.signingEndpointHostname(), "oss-cn-shanghai.aliyuncs.com");
+
+  const signedUrl = storageSignUrl("outputs/kv-test.png");
+  assert.match(signedUrl, /^https:\/\/refra-assets\.oss-cn-shanghai\.aliyuncs\.com\//);
+  assert.doesNotMatch(signedUrl, /oss-accelerate/);
+});
