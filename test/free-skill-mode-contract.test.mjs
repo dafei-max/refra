@@ -15,7 +15,7 @@ const [server, app, index, canvas] = await Promise.all([
 test("自由模式是默认状态且与技能 UI 隔离", async () => {
   assert.match(index, /id="stylePresetInput"[^>]+value="none"/);
   assert.match(index, /id="briefTopRow" class="brief-top-row hidden"/);
-  assert.match(index, /ui-assets\/icon\/skill\.svg/);
+  assert.match(`${index}\n${await readFile(path.join(root, "public", "styles.css"), "utf-8")}`, /stylePickerIcon\.svg/);
   assert.match(index, /id="stylePickerLabel">技能</);
   assert.doesNotMatch(index, /id="styleFolderInput"|id="styleForm"/);
   assert.doesNotMatch(app, /importStyleFolder|style-presets\/add|addStyleFolderButton/);
@@ -24,7 +24,7 @@ test("自由模式是默认状态且与技能 UI 隔离", async () => {
   assert.match(app, /form\.classList\.toggle\("free-mode", !isPreset\)/);
   assert.match(app, /stylePickerButton\.classList\.toggle\("active", Boolean\(isPreset\)\)/);
   assert.doesNotMatch(await readFile(path.join(root, "public", "styles.css"), "utf-8"), /#005aff/i);
-  assert.match(canvas, /ui-assets\/icon\/skill\.svg/);
+  assert.match(`${canvas}\n${await readFile(path.join(root, "public", "styles.css"), "utf-8")}`, /stylePickerIcon\.svg/);
 });
 
 test("自由生成根据图片数量直达 GPT Image 2 且不进入 Skill 链", () => {

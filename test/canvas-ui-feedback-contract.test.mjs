@@ -23,14 +23,16 @@ test("admin token masking does not register as a browser password field", () => 
   assert.match(styles, /\.invite-card\s*\{[\s\S]*?box-shadow: none;/);
 });
 
-test("canvas uses the supplied control, collapse, upload and run assets", () => {
+test("canvas uses the supplied control, collapse, SVG composer and run assets", () => {
   for (const asset of [
     "canvas-minimap.png",
     "canvas-zoom-out.png",
     "canvas-zoom-in.png",
     "canvas-collapse.png",
-    "canvas-upload.png",
   ]) assert.match(canvas, new RegExp(asset.replace(".", "\\.")));
+  for (const asset of ["uploadTrigger.svg", "stylePickerIcon.svg", "expandDescriptionButton.svg", "mention-at.svg"]) {
+    assert.match(`${canvas}\n${styles}`, new RegExp(asset.replace(".", "\\.")));
+  }
   assert.match(canvas, /\/ui-assets\/runButton\.png/);
 });
 

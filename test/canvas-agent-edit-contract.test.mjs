@@ -77,7 +77,10 @@ test("selected image branding creates a protected derivative and toolbar icons a
   assert.match(server, /"\.svg": "image\/svg\+xml; charset=utf-8"/);
 });
 
-test("requested global type normalization removes 14px, 16px and heavier numeric weights", () => {
-  assert.doesNotMatch(styles, /font-size:\s*(?:14|16)px/);
-  assert.match(styles, /#stylePickerButton\.active\s*\{[\s\S]*?color: #04CAE0;[\s\S]*?font-weight: 500;/);
+test("Figma typography loads the supplied fonts and normalizes UI copy to weight 450", () => {
+  assert.match(styles, /DouyinNumberABC-Medium\.otf/);
+  assert.match(styles, /DouYinFaXianSansBold\.otf/);
+  assert.match(styles, /:where\([\s\S]*?font-weight: 450 !important;/);
+  assert.match(styles, /#stylePickerButton\.active[\s\S]*?color: #00cae0;/i);
+  assert.match(server, /"\.otf": "font\/otf"/);
 });

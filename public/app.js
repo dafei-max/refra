@@ -85,7 +85,6 @@ const stylePresetSection = document.querySelector("#stylePresetSection");
 const stylePresetInput = document.querySelector("#stylePresetInput");
 const integratedLayoutInput = document.querySelector("#integratedLayoutInput");
 const stylePickerButton = document.querySelector("#stylePickerButton");
-const stylePickerIcon = document.querySelector("#stylePickerIcon");
 const stylePickerLabel = document.querySelector("#stylePickerLabel");
 const sizePickerButton = document.querySelector("#sizePickerButton");
 const sizePopover = document.querySelector("#sizePopover");
@@ -93,9 +92,14 @@ const imageSizeInput = document.querySelector("#imageSizeInput");
 const optimizationModeInput = document.querySelector("#optimizationModeInput");
 const autoOptimizeInput = document.querySelector("#autoOptimizeInput");
 const generationModeButtons = [...document.querySelectorAll("[data-generation-mode]")];
+const generationModeButton = document.querySelector("#generationModeButton");
+const generationModeLabel = document.querySelector("#generationModeLabel");
+const generationModePopover = document.querySelector("#generationModePopover");
 const sizeText = document.querySelector("#sizeText");
 const sizeIcon = document.querySelector("#sizeIcon");
 const mentionMenu = document.querySelector("#mentionMenu");
+const mentionTriggerButton = document.querySelector("#mentionTriggerButton");
+const visualDescriptionPlaceholder = document.querySelector("#visualDescriptionPlaceholder");
 document.body.appendChild(mentionMenu);
 const referenceStrip = document.querySelector("#referenceStrip");
 const generationStory = document.querySelector("#generationStory");
@@ -331,9 +335,6 @@ function syncStylePickerButton() {
   const current = stylePresetInput.value || "none";
   const preset = allStylePresets.find((item) => item.id === current);
   const isPreset = preset && preset.id !== "none";
-  stylePickerIcon.src = "/ui-assets/icon/skill.svg";
-  stylePickerIcon.alt = "";
-  stylePickerIcon.classList.remove("preset-thumb");
   stylePickerLabel.textContent = isPreset ? styleNameShort(preset.name) : "技能";
   briefTopRow?.classList.toggle("hidden", !isPreset);
   form.classList.toggle("free-mode", !isPreset);
@@ -444,7 +445,16 @@ function setOptimizationMode(value) {
   const mode = value === "fast" ? "fast" : "smart";
   optimizationModeInput.value = mode;
   autoOptimizeInput.checked = mode === "smart";
-  generationModeButtons.forEach((button) => button.classList.toggle("active", button.dataset.generationMode === mode));
+  generationModeLabel.textContent = mode === "fast" ? "快速生成" : "智能优化";
+  generationModeButton?.querySelector(".mode-icon")?.classList.toggle("mode-smart", mode === "smart");
+  generationModeButton?.querySelector(".mode-icon")?.classList.toggle("mode-fast", mode === "fast");
+  generationModeButtons.forEach((button) => {
+    const selected = button.dataset.generationMode === mode;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+  generationModePopover?.classList.add("hidden");
+  generationModeButton?.setAttribute("aria-expanded", "false");
   window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
 }
 
@@ -680,6 +690,19 @@ function insertAtCursor(textarea, text, replaceFrom = textarea.selectionStart, r
   const cursor = replaceFrom + text.length;
   textarea.focus();
   textarea.setSelectionRange(cursor, cursor);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function syncVisualDescriptionPlaceholder() {
+  visualDescriptionPlaceholder?.classList.toggle("hidden", Boolean(visualDescriptionInput.value));
+}
+
+function openHomeMentionPicker() {
+  const cursor = visualDescriptionInput.selectionStart ?? visualDescriptionInput.value.length;
+  const before = visualDescriptionInput.value.slice(0, cursor);
+  if (!before.endsWith("@")) insertAtCursor(visualDescriptionInput, "@");
+  else visualDescriptionInput.focus();
+  renderMentionMenu();
 }
 
 function mentionStartIndex() {
@@ -2132,6 +2155,11 @@ visualDescriptionInput.addEventListener("click", renderMentionMenu);
 visualDescriptionInput.addEventListener("keyup", renderMentionMenu);
 visualDescriptionInput.addEventListener("input", () => {
   runButton.classList.toggle("active", visualDescriptionInput.value.trim().length > 0);
+  syncVisualDescriptionPlaceholder();
+});
+mentionTriggerButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  openHomeMentionPicker();
 });
 expandDescriptionButton.addEventListener("click", expandDescription);
 doudouIpButton.addEventListener("click", () => setDoudouIpEnabled(doudouIpInput.value !== "true"));
@@ -2155,12 +2183,24 @@ sizePickerButton.addEventListener("click", (event) => {
   stylePresetSection.classList.add("hidden");
 });
 
-generationModeButtons.forEach((button) => button.addEventListener("click", () => setOptimizationMode(button.dataset.generationMode)));
-autoOptimizeInput.addEventListener("change", () => setOptimizationMode(autoOptimizeInput.checked ? "smart" : "fast"));
+generationModeButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const opening = generationModePopover.classList.contains("hidden");
+  generationModePopover.classList.toggle("hidden", !opening);
+  generationModeButton.setAttribute("aria-expanded", String(opening));
+});
+generationModeButtons.forEach((button) => button.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setOptimizationMode(button.dataset.generationMode);
+}));
 
 document.addEventListener("click", (event) => {
   if (!mentionMenu.contains(event.target) && event.target !== visualDescriptionInput) mentionMenu.classList.add("hidden");
   if (!sizePopover.contains(event.target) && !sizePickerButton.contains(event.target)) sizePopover.classList.add("hidden");
+  if (!generationModePopover.contains(event.target) && !generationModeButton.contains(event.target)) {
+    generationModePopover.classList.add("hidden");
+    generationModeButton.setAttribute("aria-expanded", "false");
+  }
 });
 
 window.addEventListener("resize", positionMentionMenu);

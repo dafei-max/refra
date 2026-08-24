@@ -1150,6 +1150,7 @@ const MIME = {
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".otf": "font/otf",
 };
 
 function jsonResponse(res, status, payload) {

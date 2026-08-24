@@ -11,31 +11,31 @@
     <div class="neo-app">
       <header class="neo-topbar">
         <div class="neo-brand">
-          <img src="/ui-assets/neo-brand.png" alt="灵眸 Aeye design" />
+          <img src="/ui-assets/icon/neo-brand.svg" alt="灵眸 Aeye design" />
         </div>
         <nav class="topbar-nav" aria-label="主导航">
           <button type="button" class="rail-item active" data-view-target="generate" id="generateButton">
             <span class="rail-icon">
-              <img class="icon-default" src="/ui-assets/icon/nav-generate-default.png" alt="" />
-              <img class="icon-click" src="/ui-assets/icon/nav-generate-click.png" alt="" />
+              <img class="icon-default" src="/ui-assets/icon/generate-default.svg" alt="" />
+              <img class="icon-click" src="/ui-assets/icon/generate-click.svg" alt="" />
             </span><span>生成</span>
           </button>
           <button type="button" class="rail-item" data-view-target="assets" id="assetsButton">
             <span class="rail-icon">
-              <img class="icon-default" src="/ui-assets/icon/nav-projects-default.png" alt="" />
-              <img class="icon-click" src="/ui-assets/icon/nav-projects-click.png" alt="" />
+              <img class="icon-default" src="/ui-assets/icon/assets-default.svg" alt="" />
+              <img class="icon-click" src="/ui-assets/icon/assets-click.svg" alt="" />
             </span><span>项目</span>
           </button>
           <button type="button" class="rail-item" data-view-target="styles" id="styleButton">
             <span class="rail-icon">
-              <img class="icon-default" src="/ui-assets/icon/nav-style-default.png" alt="" />
-              <img class="icon-click" src="/ui-assets/icon/nav-style-click.png" alt="" />
+              <img class="icon-default" src="/ui-assets/icon/styles-default.svg" alt="" />
+              <img class="icon-click" src="/ui-assets/icon/styles-click.svg" alt="" />
             </span><span>风格</span>
           </button>
           <button type="button" class="rail-item" data-view-target="materials" id="libraryButton">
             <span class="rail-icon">
-              <img class="icon-default" src="/ui-assets/icon/nav-inspiration-default.png" alt="" />
-              <img class="icon-click" src="/ui-assets/icon/nav-inspiration-click.png" alt="" />
+              <img class="icon-default" src="/ui-assets/icon/materials-default.svg" alt="" />
+              <img class="icon-click" src="/ui-assets/icon/materials-click.svg" alt="" />
             </span><span>灵感</span>
           </button>
         </nav>
@@ -64,6 +64,7 @@
               <input id="integratedLayoutInput" type="hidden" name="integrated_layout_variant" value="" />
               <input id="imageSizeInput" type="hidden" name="image_size" value="3:4" />
               <input id="optimizationModeInput" type="hidden" name="optimization_mode" value="smart" />
+              <input id="autoOptimizeInput" type="checkbox" checked hidden />
               <input id="doudouIpInput" type="hidden" name="doudou_ip" value="false" />
               <input name="generate_image" type="checkbox" checked hidden />
               <input id="referenceImageInput" name="reference_image" type="file" accept="image/*" multiple hidden />
@@ -72,20 +73,25 @@
 
               <div id="briefTopRow" class="brief-top-row hidden">
                 <span class="brief-guide">主标题为</span>
-                <input id="campaignNameInput" class="title-input" name="campaign_name" placeholder="活动名称（选填）" autocomplete="off" />
+                <input id="campaignNameInput" class="title-input" name="campaign_name" placeholder="填写活动名称" autocomplete="off" />
                 <span class="brief-guide">，副标题为</span>
-                <input id="campaignSubtitleInput" class="subtitle-input" name="campaign_subtitle" placeholder="副标题" autocomplete="off" />
+                <input id="campaignSubtitleInput" class="subtitle-input" name="campaign_subtitle" placeholder="填写副标题" autocomplete="off" />
                 <span class="brief-guide">，活动时间为</span>
-                <input id="campaignTimeInput" class="time-input" name="campaign_time" placeholder="活动时间" autocomplete="off" />
+                <input id="campaignTimeInput" class="time-input" name="campaign_time" placeholder="填写活动时间" autocomplete="off" />
               </div>
 
               <div id="referenceStrip" class="reference-strip hidden"></div>
 
               <div class="text-wrap">
+                <div id="visualDescriptionPlaceholder" class="visual-description-placeholder" aria-hidden="true">
+                  <span>上传参考图、输入文字或</span>
+                  <span class="inline-mention-chip"><img src="/ui-assets/icon/mention-at.svg" alt="" /></span>
+                  <span>主体，描述你想生成的图片。</span>
+                </div>
                 <textarea
                   id="visualDescriptionInput"
                   name="visual_description"
-                  placeholder="上传参考图、输入文字或 @主体，描述你想生成的图片。"
+                  aria-label="上传参考图、输入文字或 @主体，描述你想生成的图片。"
                   required
                 ></textarea>
                 <div id="mentionMenu" class="mention-menu hidden"></div>
@@ -94,10 +100,10 @@
               <div class="dock-actions">
                 <div class="dock-tools">
                   <button type="button" class="tool-button square" id="uploadTrigger" title="上传图片">
-                    <img src="/ui-assets/jia.png" alt="" />
+                    <img src="/ui-assets/icon/uploadTrigger.svg" alt="" />
                   </button>
                   <button type="button" class="tool-button" id="stylePickerButton">
-                    <img id="stylePickerIcon" class="tool-icon-img" src="/ui-assets/icon/skill.svg" alt="" />
+                    <span id="stylePickerIcon" class="tool-icon-mask style-picker-icon" aria-hidden="true"></span>
                     <span id="stylePickerLabel">技能</span>
                   </button>
                   <button type="button" class="tool-button" id="sizePickerButton">
@@ -105,18 +111,27 @@
                     <span id="sizeText">3:4</span>
                   </button>
                   <button type="button" class="tool-button" id="expandDescriptionButton">
-                    <img class="tool-icon-img" src="/ui-assets/size.png" alt="" />
+                    <img class="tool-icon-img" src="/ui-assets/icon/expandDescriptionButton.svg" alt="" />
                     <span>扩写</span>
                   </button>
-                  <div class="generation-mode-control" role="group" aria-label="生成模式">
-                    <button type="button" data-generation-mode="fast">快速生成</button>
-                    <button type="button" data-generation-mode="smart" class="active">智能优化</button>
+                  <div class="generation-mode-select">
+                    <button id="generationModeButton" type="button" class="generation-mode-button" aria-haspopup="listbox" aria-expanded="false">
+                      <span class="mode-icon mode-smart" aria-hidden="true"></span>
+                      <span id="generationModeLabel">智能优化</span>
+                      <span class="mode-chevron" aria-hidden="true"></span>
+                    </button>
+                    <div id="generationModePopover" class="generation-mode-popover hidden" role="listbox" aria-label="生成模式">
+                      <button type="button" data-generation-mode="smart" class="selected" role="option" aria-selected="true">
+                        <span class="mode-icon mode-smart" aria-hidden="true"></span><span>智能优化</span>
+                      </button>
+                      <button type="button" data-generation-mode="fast" role="option" aria-selected="false">
+                        <span class="mode-icon mode-fast" aria-hidden="true"></span><span>快速生成</span>
+                      </button>
+                    </div>
                   </div>
-                  <label class="auto-optimize-toggle" title="初稿完成后自动检查并最多优化一次">
-                    <input id="autoOptimizeInput" type="checkbox" checked />
-                    <span class="auto-optimize-switch" aria-hidden="true"></span>
-                    <span>自动优化</span>
-                  </label>
+                  <button type="button" class="tool-button square mention-trigger" id="mentionTriggerButton" title="选择参考图" aria-label="选择参考图">
+                    <img src="/ui-assets/icon/mention-at.svg" alt="" />
+                  </button>
                   <button type="button" class="tool-button doudou-toggle" id="doudouIpButton" aria-pressed="false">
                     <img class="tool-icon-img doudou-icon" src="/doudou/6视图/22-1.png" alt="" />
                     <span>兜兜IP</span>

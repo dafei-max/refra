@@ -145,7 +145,7 @@ let rowCounter = 0;
 function CanvasApp() {
   const [nodes, setNodes, applyNodesChange] = useNodesState([]);
   const [messages, setMessages] = useState([]);
-  const [chatWidth, setChatWidth] = useState(399);
+  const [chatWidth, setChatWidth] = useState(460);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [showMini, setShowMini] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -159,6 +159,7 @@ function CanvasApp() {
   const [referencesLoading, setReferencesLoading] = useState(false);
   const [composerExpanding, setComposerExpanding] = useState(false);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const [composerMention, setComposerMention] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [loadingNode, setLoadingNode] = useState(null);
@@ -808,6 +809,26 @@ function CanvasApp() {
     });
   }, [composerMention]);
 
+  const openComposerMention = useCallback(() => {
+    const input = chatInputRef.current;
+    if (!input) return;
+    setShowModeMenu(false);
+    setShowSizeMenu(false);
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    const before = input.value.slice(0, start);
+    const insertion = before.endsWith("@") ? "" : "@";
+    input.value = `${before}${insertion}${input.value.slice(end)}`;
+    const cursor = start + insertion.length;
+    window.__canvasPromptValue = input.value;
+    setComposerHasText(Boolean(input.value.trim()));
+    requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(cursor, cursor);
+      refreshComposerMention(input);
+    });
+  }, [refreshComposerMention]);
+
   const mentionReferences = composerMention
     ? composerReferences.filter((reference) => {
         const label = reference.label || `图${reference.index + 1}`;
@@ -837,8 +858,8 @@ function CanvasApp() {
   const startResize = useCallback((event) => {
     event.preventDefault();
     const startX = event.clientX;
-    const startWidth = chatPanelRef.current?.offsetWidth || 399;
-    const onMove = (moveEvent) => setChatWidth(Math.min(640, Math.max(280, startWidth + (startX - moveEvent.clientX))));
+    const startWidth = chatPanelRef.current?.offsetWidth || 460;
+    const onMove = (moveEvent) => setChatWidth(Math.min(640, Math.max(420, startWidth + (startX - moveEvent.clientX))));
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
@@ -1000,18 +1021,27 @@ function CanvasApp() {
                 ))}
               </div>
             )}
-            <div className="cf-composer-mode-row">
-              <div className="cf-composer-mode-switch" role="group" aria-label="生成模式">
-                <button type="button" className={composerSettings.optimization_mode === "fast" ? "active" : ""} onClick={() => window.__setCanvasOptimizationMode?.("fast")}>快速生成</button>
-                <button type="button" className={composerSettings.optimization_mode !== "fast" ? "active" : ""} onClick={() => window.__setCanvasOptimizationMode?.("smart")}>智能优化</button>
-              </div>
-              <span className={composerSettings.optimization_mode !== "fast" ? "cf-auto-optimize active" : "cf-auto-optimize"}>自动优化</span>
-            </div>
             <div className="cf-composer-tools">
-              <button type="button" className="cf-composer-upload" title="上传参考图" onClick={invokeTool("upload")}><img src="/ui-assets/icon/canvas-upload.png" alt="" /></button>
-              <button type="button" onClick={invokeTool("style")}><img src="/ui-assets/icon/skill.svg" alt="" />{composerSettings.style_name || "技能"}</button>
-              <button type="button" className={showSizeMenu ? "active" : ""} onClick={() => setShowSizeMenu((value) => !value)}><span className={`size-icon ratio-${String(composerSettings.image_size || "3:4").replace(":", "")}`} />{composerSettings.image_size || "3:4"}</button>
-              <button type="button" disabled={composerExpanding} onClick={invokeTool("expand")}><img src="/ui-assets/size.png" alt="" />{composerExpanding ? "扩写中" : "扩写"}</button>
+              <button type="button" className="cf-composer-upload" title="上传参考图" onClick={invokeTool("upload")}><img src="/ui-assets/icon/uploadTrigger.svg" alt="" /></button>
+              <button type="button" aria-label={composerSettings.style_name || "技能"} className={composerSettings.style_name && composerSettings.style_name !== "技能" ? "active" : ""} onClick={invokeTool("style")}><span className="tool-icon-mask style-picker-icon" aria-hidden="true" /><span className="cf-tool-label">{composerSettings.style_name || "技能"}</span></button>
+              <button type="button" aria-label={`图片比例 ${composerSettings.image_size || "3:4"}`} className={showSizeMenu ? "active" : ""} onClick={() => { setShowModeMenu(false); setComposerMention(null); setShowSizeMenu((value) => !value); }}><span className={`size-icon ratio-${String(composerSettings.image_size || "3:4").replace(":", "")}`} /><span className="cf-tool-label">{composerSettings.image_size || "3:4"}</span></button>
+              <button type="button" aria-label={composerExpanding ? "扩写中" : "扩写"} disabled={composerExpanding} onClick={invokeTool("expand")}><img src="/ui-assets/icon/expandDescriptionButton.svg" alt="" /><span className="cf-tool-label">{composerExpanding ? "扩写中" : "扩写"}</span></button>
+              <div className="cf-generation-mode-select">
+                <button type="button" className="cf-generation-mode-button" aria-label={composerSettings.optimization_mode === "fast" ? "快速生成" : "智能优化"} aria-haspopup="listbox" aria-expanded={showModeMenu} onClick={() => { setShowSizeMenu(false); setComposerMention(null); setShowModeMenu((value) => !value); }}>
+                  <span className={`mode-icon ${composerSettings.optimization_mode === "fast" ? "mode-fast" : "mode-smart"}`} aria-hidden="true" />
+                  <span className="cf-tool-label">{composerSettings.optimization_mode === "fast" ? "快速生成" : "智能优化"}</span>
+                  <span className="mode-chevron" aria-hidden="true" />
+                </button>
+                {showModeMenu && <div className="cf-generation-mode-popover" role="listbox" aria-label="生成模式">
+                  {[{ value: "smart", label: "智能优化" }, { value: "fast", label: "快速生成" }].map((option) => {
+                    const selected = (composerSettings.optimization_mode || "smart") === option.value;
+                    return <button type="button" key={option.value} className={selected ? "selected" : ""} role="option" aria-selected={selected} onClick={() => { window.__setCanvasOptimizationMode?.(option.value); setShowModeMenu(false); }}>
+                      <span className={`mode-icon mode-${option.value}`} aria-hidden="true" /><span>{option.label}</span>
+                    </button>;
+                  })}
+                </div>}
+              </div>
+              <button type="button" className="cf-composer-mention" title="选择参考图" aria-label="选择参考图" onClick={openComposerMention}><img src="/ui-assets/icon/mention-at.svg" alt="" /></button>
               <button type="button" className={`cf-composer-send${composerHasText ? " active" : ""}`} onClick={sendChat} title="发送">
                 <img src="/ui-assets/runButton.png" alt="" />
               </button>
