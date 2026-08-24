@@ -4894,7 +4894,7 @@ body {
 body, button, input, textarea, select { font-family: "Douyin Number ABC", "PingFang SC", "Microsoft YaHei", sans-serif; font-weight: 450; }
 :where(h1, h2, h3, h4, h5, h6, p, span, strong, label, a, button, input, textarea, select) { font-weight: 450 !important; }
 .home-title { font-family: "Douyin Faxian Sans", "PingFang SC", sans-serif; font-weight: 450 !important; }
-.neo-topbar .neo-brand { width: 172px; height: 32px; }
+.neo-topbar .neo-brand { width: 137.6px; height: 25.6px; }
 .topbar-nav .rail-icon, .topbar-nav .rail-icon img { width: 20px; height: 20px; }
 .invite-btn, .invite-btn:hover, .invite-btn:focus-visible { width: auto; min-width: 71px; height: 37px; padding: 8px 16px; border: 0; border-radius: 12px; background: #fff; color: #1b1c21; font-size: 16px; line-height: 21px; box-shadow: none; transform: none; }
 .prompt-dock { min-height: 194px; padding: 17px; gap: 8.664px; border-color: var(--control-border); background: var(--control-panel); }
