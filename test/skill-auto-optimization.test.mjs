@@ -80,4 +80,8 @@ test("canvas contract exposes draft immediately, then optimized version and retr
   assert.match(canvas, /查看优化版/);
   assert.match(canvas, /重新优化/);
   assert.match(canvas, /void runOptimization/);
+  assert.match(canvas, /ui-assets\/icon\/image\.svg/);
+  assert.doesNotMatch(canvas, /className="cf-node-version-bar"/);
+  assert.doesNotMatch(canvas, /className="cf-node-optimization-reason"/);
+  assert.match(canvas, /className="cf-msg-optimization-reason"/);
 });

@@ -4939,3 +4939,194 @@ body, button, input, textarea, select { font-family: "Douyin Number ABC", "PingF
 .cf-composer-send img { width: 30px !important; height: 30px !important; opacity: .5; }
 .cf-composer-send.active img { opacity: 1; }
 @container (max-width: 440px) { .cf-composer-tools .cf-tool-label, .cf-composer-tools .mode-chevron { display: none; } .cf-composer-tools > button, .cf-composer-tools .cf-generation-mode-button { width: 30px; padding: 0; } }
+
+/* Canvas node captions, chat proportions and compact scrollbars. */
+.canvas-page .cf-node {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.canvas-page .cf-node.selected {
+  outline: 0;
+}
+
+.canvas-page .cf-node.selected > img {
+  outline: 2px solid #04CAE0;
+  outline-offset: 0;
+}
+
+.canvas-page .cf-version-badge {
+  width: auto;
+  max-width: 100%;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.canvas-page .cf-version-badge.is-switchable {
+  cursor: pointer;
+}
+
+.canvas-page .cf-version-badge > img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 0;
+}
+
+.canvas-page .cf-version-badge > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-chat-messages .cf-msg-wrap {
+  width: fit-content;
+}
+
+.cf-chat-messages .cf-msg-wrap.user {
+  width: fit-content;
+  max-width: 80%;
+  align-self: flex-end;
+}
+
+.cf-chat-messages .cf-msg-wrap.assistant {
+  width: fit-content;
+  max-width: 60%;
+  align-self: flex-start;
+}
+
+.cf-chat-messages .cf-msg-wrap.user .cf-msg,
+.cf-chat-messages .cf-msg-wrap.assistant .cf-msg {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.cf-msg-optimization-reason {
+  max-width: 100%;
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.cf-msg-retry-optimization {
+  width: fit-content;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #00CAE0;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.cf-chat-composer {
+  height: 160px;
+  min-height: 160px;
+  box-sizing: border-box;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cf-composer-brief {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cf-composer-brief label {
+  min-width: 0;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.cf-composer-brief input {
+  min-width: 0;
+  height: 16px;
+  padding: 0 3px;
+  border: 0;
+  background: transparent;
+  color: #00CAE0;
+  font: inherit;
+  line-height: 16px;
+  outline: 0;
+}
+
+.cf-composer-brief label:nth-child(1) input { width: 88px; }
+.cf-composer-brief label:nth-child(2) input { width: 76px; }
+.cf-composer-brief label:nth-child(3) input { width: 88px; }
+.cf-composer-brief input::placeholder { color: rgba(255, 255, 255, 0.3); opacity: 1; }
+
+.cf-chat-composer .cf-composer-row {
+  flex: 1 1 auto;
+  min-height: 24px;
+}
+
+.cf-chat-composer .cf-composer-input {
+  width: 100%;
+  min-height: 24px;
+  height: 100%;
+}
+
+.cf-chat-composer .cf-composer-tools {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(138, 143, 153, 0.58) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track-piece {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(138, 143, 153, 0.58);
+  box-shadow: none;
+}
+
+*::-webkit-scrollbar-corner {
+  border: 0;
+  background: transparent;
+}

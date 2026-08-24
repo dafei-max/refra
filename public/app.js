@@ -335,7 +335,7 @@ function syncStylePickerButton() {
   const current = stylePresetInput.value || "none";
   const preset = allStylePresets.find((item) => item.id === current);
   const isPreset = preset && preset.id !== "none";
-  stylePickerLabel.textContent = isPreset ? styleNameShort(preset.name) : "技能";
+  stylePickerLabel.textContent = "技能";
   briefTopRow?.classList.toggle("hidden", !isPreset);
   form.classList.toggle("free-mode", !isPreset);
   stylePickerButton.classList.toggle("active", Boolean(isPreset));
@@ -2053,22 +2053,30 @@ window.__canvasTool = (action, event) => {
   return undefined;
 };
 
-window.__getCanvasSettings = () => ({
-  campaign_name: campaignNameInput.value.trim(),
-  campaign_subtitle: campaignSubtitleInput.value.trim(),
-  campaign_time: campaignTimeInput.value.trim(),
-  image_size: imageSizeInput.value,
-  style_preset: stylePresetInput.value,
-  integrated_layout_variant: integratedLayoutInput.value,
-  doudou_ip: /兜兜/.test(String(window.__canvasPromptValue || visualDescriptionInput.value)),
-  include_logo: isToolToggleEnabled(includeLogoButton),
-  include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
-  style_name: stylePickerLabel.textContent || "技能",
-  optimization_mode: optimizationModeInput.value || "smart",
-  auto_optimize: autoOptimizeInput.checked,
-});
+window.__getCanvasSettings = () => {
+  const preset = selectedStylePreset();
+  const hasSkill = Boolean(preset && preset.id !== "none");
+  return {
+    campaign_name: campaignNameInput.value.trim(),
+    campaign_subtitle: campaignSubtitleInput.value.trim(),
+    campaign_time: campaignTimeInput.value.trim(),
+    image_size: imageSizeInput.value,
+    style_preset: stylePresetInput.value,
+    integrated_layout_variant: integratedLayoutInput.value,
+    doudou_ip: /兜兜/.test(String(window.__canvasPromptValue || visualDescriptionInput.value)),
+    include_logo: isToolToggleEnabled(includeLogoButton),
+    include_search_overlay: isToolToggleEnabled(includeSearchOverlayButton),
+    style_name: hasSkill ? styleNameShort(preset.name) : "",
+    has_skill: hasSkill,
+    optimization_mode: optimizationModeInput.value || "smart",
+    auto_optimize: autoOptimizeInput.checked,
+  };
+};
 
 window.__applyCanvasSettings = (settings = {}) => {
+  if (Object.hasOwn(settings, "campaign_name")) campaignNameInput.value = String(settings.campaign_name || "");
+  if (Object.hasOwn(settings, "campaign_subtitle")) campaignSubtitleInput.value = String(settings.campaign_subtitle || "");
+  if (Object.hasOwn(settings, "campaign_time")) campaignTimeInput.value = String(settings.campaign_time || "");
   if (settings.image_size) setImageSize(settings.image_size);
   if (settings.style_preset) {
     stylePresetInput.value = settings.style_preset;
@@ -2093,6 +2101,17 @@ window.__removeReferenceFile = removeReferenceFile;
 window.__addReferenceFiles = addReferenceFiles;
 window.__setCanvasImageSize = setImageSize;
 window.__setCanvasOptimizationMode = setOptimizationMode;
+window.__setCanvasBriefField = (field, value) => {
+  const inputs = {
+    campaign_name: campaignNameInput,
+    campaign_subtitle: campaignSubtitleInput,
+    campaign_time: campaignTimeInput,
+  };
+  const input = inputs[field];
+  if (!input) return;
+  input.value = String(value || "");
+  window.dispatchEvent(new CustomEvent("refra:canvas-settings", { detail: window.__getCanvasSettings?.() || {} }));
+};
 
 window.__canvasReturnedHome = () => {
   showView("generate");

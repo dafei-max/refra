@@ -2577,9 +2577,13 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
   }
   if (settings && typeof settings === "object") {
     project.settings = {
+      campaign_name: textOf(settings.campaign_name).slice(0, 240),
+      campaign_subtitle: textOf(settings.campaign_subtitle).slice(0, 240),
+      campaign_time: textOf(settings.campaign_time).slice(0, 240),
       image_size: textOf(settings.image_size).slice(0, 16),
       style_preset: textOf(settings.style_preset).slice(0, 120),
       style_name: textOf(settings.style_name).slice(0, 120),
+      has_skill: Boolean(settings.has_skill),
       integrated_layout_variant: textOf(settings.integrated_layout_variant).slice(0, 160),
       doudou_ip: Boolean(settings.doudou_ip),
       include_logo: Boolean(settings.include_logo),
@@ -2596,6 +2600,7 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
       content: textOf(message.content).slice(0, 4000),
       image_object_key: textOf(message.image_object_key).slice(0, 1000),
       imageName: textOf(message.imageName).slice(0, 240),
+      optimization_reason: textOf(message.optimization_reason).slice(0, 600),
       created_at: message.created_at || new Date().toISOString(),
     })).filter((message) => message.content || message.image_object_key);
   }

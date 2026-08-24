@@ -23,8 +23,12 @@ test("自由模式是默认状态且与技能 UI 隔离", async () => {
   assert.match(app, /briefTopRow\?\.classList\.toggle\("hidden", !isPreset\)/);
   assert.match(app, /form\.classList\.toggle\("free-mode", !isPreset\)/);
   assert.match(app, /stylePickerButton\.classList\.toggle\("active", Boolean\(isPreset\)\)/);
+  assert.match(app, /stylePickerLabel\.textContent = "技能"/);
+  assert.match(app, /style_name: hasSkill \? styleNameShort\(preset\.name\) : ""/);
   assert.doesNotMatch(await readFile(path.join(root, "public", "styles.css"), "utf-8"), /#005aff/i);
   assert.match(`${canvas}\n${await readFile(path.join(root, "public", "styles.css"), "utf-8")}`, /stylePickerIcon\.svg/);
+  assert.match(canvas, /<span className="cf-tool-label">技能<\/span>/);
+  assert.match(canvas, /className="cf-composer-brief"/);
 });
 
 test("自由生成根据图片数量直达 GPT Image 2 且不进入 Skill 链", () => {

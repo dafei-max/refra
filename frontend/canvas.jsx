@@ -48,6 +48,15 @@ function ImageNode({ data, selected }) {
     ? (data.draftObjectKey || data.objectKey)
     : (data.finalObjectKey || data.objectKey);
   const actionData = { ...data, url: visibleUrl, objectKey: visibleObjectKey };
+  const hasVersions = Boolean(data.finalUrl && data.finalUrl !== data.draftUrl);
+  const versionLabel = data.optimizationStatus
+    ? (showingDraft ? "初稿" : "优化版")
+    : (data.label || "图片");
+  const toggleVersion = (event) => {
+    event.stopPropagation();
+    if (!hasVersions) return;
+    data.onVersion?.(data.nodeId, showingDraft ? "final" : "draft");
+  };
   const download = () => {
     const link = document.createElement("a");
     link.href = visibleUrl;
@@ -57,22 +66,16 @@ function ImageNode({ data, selected }) {
 
   return (
     <div className={`cf-node${selected ? " selected" : ""}`}>
+      <button
+        type="button"
+        className={`cf-version-badge ${showingDraft ? "draft" : "final"}${hasVersions ? " is-switchable" : ""}`}
+        onClick={toggleVersion}
+        title={hasVersions ? (showingDraft ? "查看优化版" : "查看初稿") : versionLabel}
+      >
+        <img src="/ui-assets/icon/image.svg" alt="" />
+        <span>{versionLabel}</span>
+      </button>
       <img src={visibleUrl} alt={data.name || ""} />
-      {data.optimizationStatus && (
-        <div className="cf-node-version-bar" onClick={(event) => event.stopPropagation()}>
-          <span className={`cf-version-badge ${showingDraft ? "draft" : "final"}`}>{showingDraft ? "初稿" : "优化版"}</span>
-          {data.finalUrl && data.finalUrl !== data.draftUrl ? (
-            <div className="cf-version-switch">
-              <button type="button" className={showingDraft ? "active" : ""} onClick={() => data.onVersion?.(data.nodeId, "draft")}>查看初稿</button>
-              <button type="button" className={!showingDraft ? "active" : ""} onClick={() => data.onVersion?.(data.nodeId, "final")}>查看优化版</button>
-            </div>
-          ) : null}
-          {["failed", "review_failed"].includes(data.optimizationStatus) ? (
-            <button type="button" className="cf-retry-optimization" onClick={() => data.onRetry?.(data)}>重新优化</button>
-          ) : null}
-        </div>
-      )}
-      {data.optimizationReason && !showingDraft ? <div className="cf-node-optimization-reason">已优化：{data.optimizationReason}</div> : null}
       {selected && (
         <div className="cf-node-toolbar">
           <button type="button" onClick={(event) => { event.stopPropagation(); window.open(visibleUrl, "_blank"); }}>
@@ -152,7 +155,17 @@ function CanvasApp() {
   const [session, setSession] = useState(null);
   const [title, setTitle] = useState("Untitled");
   const [editingTitle, setEditingTitle] = useState(false);
-  const [composerSettings, setComposerSettings] = useState({ image_size: "3:4", style_name: "技能", optimization_mode: "smart", auto_optimize: true });
+  const [composerSettings, setComposerSettings] = useState({
+    campaign_name: "",
+    campaign_subtitle: "",
+    campaign_time: "",
+    image_size: "3:4",
+    style_preset: "none",
+    style_name: "",
+    has_skill: false,
+    optimization_mode: "smart",
+    auto_optimize: true,
+  });
   const [flowInstance, setFlowInstance] = useState(null);
   const [composerHasText, setComposerHasText] = useState(false);
   const [composerReferences, setComposerReferences] = useState([]);
@@ -226,9 +239,9 @@ function CanvasApp() {
     setMessages(messagesRef.current);
   }, []);
 
-  const updateStatusMessage = useCallback((content) => {
+  const updateStatusMessage = useCallback((content, extra = {}) => {
     const next = messagesRef.current.filter((message) => message.kind !== "status");
-    next.push({ id: "generation-status", role: "assistant", kind: "status", content });
+    next.push({ id: "generation-status", role: "assistant", kind: "status", content, ...extra });
     messagesRef.current = next;
     setMessages(next);
   }, []);
@@ -341,7 +354,12 @@ function CanvasApp() {
               optimizationStatus: "completed",
               optimizationReason: job?.review_result?.max_problem || "",
             });
-            appendMessage("assistant", "优化完成", { image: image.url, imageObjectKey: image.object_key || "", imageName: image.name });
+            appendMessage("assistant", "优化完成", {
+              image: image.url,
+              imageObjectKey: image.object_key || "",
+              imageName: image.name,
+              optimizationReason: job?.review_result?.max_problem || "",
+            });
           }
         } else if (event === "optimization_error") {
           const job = payload.job;
@@ -350,7 +368,9 @@ function CanvasApp() {
             optimizationStatus: job?.optimization_status || "failed",
             optimizationJobId: job?.id || "",
           });
-          updateStatusMessage(`自动优化未完成，初稿已保留：${payload.message || "可稍后重试"}`);
+          updateStatusMessage(`自动优化未完成，初稿已保留：${payload.message || "可稍后重试"}`, {
+            retryOptimizationJobId: job?.id || "",
+          });
         } else if (event === "optimization_complete") {
           const job = payload.job;
           const draftKey = job?.draft_image?.object_key;
@@ -386,7 +406,7 @@ function CanvasApp() {
       });
       await parseSse(response, { optimization: true });
     } catch (error) {
-      updateStatusMessage(`自动优化未完成，初稿已保留：${error.message}`);
+      updateStatusMessage(`自动优化未完成，初稿已保留：${error.message}`, { retryOptimizationJobId: jobId });
     } finally {
       optimizationLocksRef.current.delete(jobId);
     }
@@ -595,8 +615,8 @@ function CanvasApp() {
       })).filter((element) => element.object_key),
       edges: [],
       viewport: viewportRef.current,
-      messages: messagesRef.current.map(({ id, role, kind, content, imageObjectKey, imageName, created_at }) => ({
-        id, role, kind, content, image_object_key: imageObjectKey, imageName, created_at,
+      messages: messagesRef.current.map(({ id, role, kind, content, imageObjectKey, imageName, optimizationReason, created_at }) => ({
+        id, role, kind, content, image_object_key: imageObjectKey, imageName, optimization_reason: optimizationReason, created_at,
       })),
       settings: typeof window.__getCanvasSettings === "function" ? window.__getCanvasSettings() : {},
       replace_elements: true,
@@ -663,8 +683,27 @@ function CanvasApp() {
       setComposerReferences(window.__getReferencePreviews?.() || []);
       const project = init?.project || null;
       setTitle(project?.title || "Untitled");
-      setComposerSettings({ image_size: "3:4", style_name: "技能", optimization_mode: "smart", auto_optimize: true, ...(project?.settings || {}) });
-      window.__applyCanvasSettings?.(project?.settings || {});
+      const sessionSettings = {
+        image_size: "3:4",
+        style_preset: "none",
+        style_name: "",
+        has_skill: false,
+        optimization_mode: "smart",
+        auto_optimize: true,
+        ...(project?.settings || {}),
+        ...(init?.autoGenerate ? {
+          campaign_name: init.campaign_name || "",
+          campaign_subtitle: init.campaign_subtitle || "",
+          campaign_time: init.campaign_time || "",
+          image_size: init.image_size || "3:4",
+          style_preset: init.style_preset || "none",
+          optimization_mode: init.optimization_mode || "smart",
+          auto_optimize: init.auto_optimize !== false,
+        } : {}),
+      };
+      sessionSettings.has_skill = sessionSettings.style_preset !== "none";
+      setComposerSettings(sessionSettings);
+      window.__applyCanvasSettings?.(sessionSettings);
       const labels = { typography: "第一步版式图", kv: "完整 KV", title: "标题图层", background: "背景图层" };
       const restored = (project?.elements || []).map((element, index) => ({
         id: element.id,
@@ -704,6 +743,7 @@ function CanvasApp() {
         image: message.image_url || "",
         imageObjectKey: message.image_object_key || "",
         imageName: message.imageName,
+        optimizationReason: message.optimization_reason || "",
       })));
       viewportRef.current = project?.viewport || { x: 0, y: 0, zoom: 1 };
       setSession({ ...init });
@@ -869,6 +909,14 @@ function CanvasApp() {
   }, []);
 
   const chatTitle = [...messages].reverse().find((message) => message.role === "user" && message.content)?.content || "新对话";
+  const hasComposerSkill = Boolean(
+    composerSettings.has_skill
+    || (composerSettings.style_preset && composerSettings.style_preset !== "none"),
+  );
+  const updateComposerBrief = (field, value) => {
+    setComposerSettings((current) => ({ ...current, [field]: value }));
+    window.__setCanvasBriefField?.(field, value);
+  };
 
   return (
     <div className="canvas-app-shell">
@@ -943,11 +991,20 @@ function CanvasApp() {
             {messages.map((message) => (
               <div key={message.id} className={`cf-msg-wrap ${message.role}${message.kind === "status" ? " status" : ""}`}>
                 {message.content ? <div className="cf-msg">{message.content}</div> : null}
+                {message.optimizationReason ? <div className="cf-msg-optimization-reason">已优化：{message.optimizationReason}</div> : null}
+                {message.retryOptimizationJobId ? <button type="button" className="cf-msg-retry-optimization" onClick={() => runOptimization(message.retryOptimizationJobId, true)}>重新优化</button> : null}
                 {message.image ? <div className="cf-msg cf-msg-image"><img src={message.image} alt={message.imageName || ""} /></div> : null}
               </div>
             ))}
           </div>
           <div className="cf-chat-composer">
+            {hasComposerSkill && (
+              <div className="cf-composer-brief" aria-label="营销活动信息">
+                <label><span>主标题为</span><input value={composerSettings.campaign_name || ""} placeholder="填写活动名称" onChange={(event) => updateComposerBrief("campaign_name", event.target.value)} /><span>，</span></label>
+                <label><span>副标题为</span><input value={composerSettings.campaign_subtitle || ""} placeholder="填写副标题" onChange={(event) => updateComposerBrief("campaign_subtitle", event.target.value)} /><span>，</span></label>
+                <label><span>活动时间为</span><input value={composerSettings.campaign_time || ""} placeholder="填写活动时间" onChange={(event) => updateComposerBrief("campaign_time", event.target.value)} /></label>
+              </div>
+            )}
             <div className="cf-composer-row">
               <textarea
                 ref={chatInputRef}
@@ -1023,7 +1080,7 @@ function CanvasApp() {
             )}
             <div className="cf-composer-tools">
               <button type="button" className="cf-composer-upload" title="上传参考图" onClick={invokeTool("upload")}><img src="/ui-assets/icon/uploadTrigger.svg" alt="" /></button>
-              <button type="button" aria-label={composerSettings.style_name || "技能"} className={composerSettings.style_name && composerSettings.style_name !== "技能" ? "active" : ""} onClick={invokeTool("style")}><span className="tool-icon-mask style-picker-icon" aria-hidden="true" /><span className="cf-tool-label">{composerSettings.style_name || "技能"}</span></button>
+              <button type="button" aria-label={hasComposerSkill ? `已选择技能：${composerSettings.style_name || "技能"}` : "技能"} className={hasComposerSkill ? "active" : ""} onClick={invokeTool("style")}><span className="tool-icon-mask style-picker-icon" aria-hidden="true" /><span className="cf-tool-label">技能</span></button>
               <button type="button" aria-label={`图片比例 ${composerSettings.image_size || "3:4"}`} className={showSizeMenu ? "active" : ""} onClick={() => { setShowModeMenu(false); setComposerMention(null); setShowSizeMenu((value) => !value); }}><span className={`size-icon ratio-${String(composerSettings.image_size || "3:4").replace(":", "")}`} /><span className="cf-tool-label">{composerSettings.image_size || "3:4"}</span></button>
               <button type="button" aria-label={composerExpanding ? "扩写中" : "扩写"} disabled={composerExpanding} onClick={invokeTool("expand")}><img src="/ui-assets/icon/expandDescriptionButton.svg" alt="" /><span className="cf-tool-label">{composerExpanding ? "扩写中" : "扩写"}</span></button>
               <div className="cf-generation-mode-select">

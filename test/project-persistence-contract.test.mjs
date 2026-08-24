@@ -29,6 +29,7 @@ test("canvas persistence replaces visible elements and stores an edge-free board
 
 test("persisted message images use object keys and are signed only for reads", () => {
   assert.match(server, /image_object_key: textOf\(message\.image_object_key\)/);
+  assert.match(server, /optimization_reason: textOf\(message\.optimization_reason\)/);
   assert.match(server, /image_url: message\.image_object_key \? storageSignUrl/);
   assert.doesNotMatch(server, /image: textOf\(message\.image\)/);
 });
