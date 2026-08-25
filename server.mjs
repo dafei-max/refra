@@ -2432,7 +2432,7 @@ function elementsFromImageResult(result) {
   const typoKey = image.layers?.typography?.object_key;
   const sceneKey = image.layers?.scene?.object_key;
   if (typoKey) {
-    elements.push({ id: newProjectElementId(), kind: "typography", name: typoKey.split("/").pop(), object_key: typoKey, created_at: now });
+    elements.push({ id: newProjectElementId(), kind: "typography", name: typoKey.split("/").pop(), object_key: typoKey, aspect_ratio: result.request?.image_size || "", created_at: now });
   }
   if (sceneKey) {
     elements.push({
@@ -2445,6 +2445,7 @@ function elementsFromImageResult(result) {
       optimization_job_id: result.optimization?.id || "",
       optimization_status: result.optimization?.optimization_status || "",
       optimization_reason: result.optimization?.review_result?.max_problem || "",
+      aspect_ratio: result.request?.image_size || "",
       created_at: now,
     });
   }
@@ -2459,6 +2460,7 @@ function elementsFromImageResult(result) {
       optimization_job_id: result.optimization?.id || "",
       optimization_status: result.optimization?.optimization_status || "",
       optimization_reason: result.optimization?.review_result?.max_problem || "",
+      aspect_ratio: result.request?.image_size || "",
       created_at: now,
     });
   }
@@ -2539,6 +2541,7 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
         existing.optimization_job_id = textOf(element.optimization_job_id).slice(0, 180);
         existing.optimization_status = textOf(element.optimization_status).slice(0, 80);
         existing.optimization_reason = textOf(element.optimization_reason).slice(0, 600);
+        existing.aspect_ratio = textOf(element.aspect_ratio).slice(0, 32);
         byKey.set(key, existing);
       } else {
         byKey.set(key, {
@@ -2551,6 +2554,7 @@ async function saveProjectCanvas(projectId, { title, elements, edges, viewport, 
           optimization_job_id: textOf(element.optimization_job_id).slice(0, 180),
           optimization_status: textOf(element.optimization_status).slice(0, 80),
           optimization_reason: textOf(element.optimization_reason).slice(0, 600),
+          aspect_ratio: textOf(element.aspect_ratio).slice(0, 32),
           x: Number.isFinite(Number(element.x)) ? Number(element.x) : 0,
           y: Number.isFinite(Number(element.y)) ? Number(element.y) : 0,
           created_at: new Date().toISOString(),

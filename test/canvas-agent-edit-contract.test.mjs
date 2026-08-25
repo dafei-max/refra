@@ -31,6 +31,9 @@ test("generation exposes a ratio-aware 12px shimmer node", () => {
   assert.match(styles, /\.cf-generation-loading-card\s*\{[\s\S]*?border-radius: 12px;/);
   assert.match(styles, /animation: canvasGenerationShimmer/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(canvas, /position: loadingPosition\(loadingAspectRatio\)/);
+  assert.match(canvas, /onMove=\{\(_, viewport\) =>/);
+  assert.match(canvas, /centerLoadingNode\(viewport\)/);
 });
 
 test("canvas supports node undo and redo without graph edges", () => {

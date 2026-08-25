@@ -25,6 +25,8 @@ test("canvas persistence replaces visible elements and stores an edge-free board
   assert.match(canvas, /viewport: viewportRef\.current/);
   assert.match(canvas, /messages: messagesRef\.current\.map/);
   assert.match(canvas, /settings: typeof window\.__getCanvasSettings/);
+  assert.match(canvas, /aspect_ratio: node\.data\?\.aspectRatio/);
+  assert.match(server, /existing\.aspect_ratio = textOf\(element\.aspect_ratio\)/);
 });
 
 test("persisted message images use object keys and are signed only for reads", () => {

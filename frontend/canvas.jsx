@@ -7,6 +7,10 @@ import {
   useReactFlow,
   useNodesState,
 } from "@xyflow/react";
+import {
+  centeredLoadingNodePosition,
+  nextCanvasNodePosition,
+} from "./canvas-layout.mjs";
 
 function adminToken() {
   return (sessionStorage.getItem("refra_admin_token") || "").trim();
@@ -143,8 +147,6 @@ function CanvasControls({ showMini, onToggleMini }) {
   );
 }
 
-let rowCounter = 0;
-
 function CanvasApp() {
   const [nodes, setNodes, applyNodesChange] = useNodesState([]);
   const [messages, setMessages] = useState([]);
@@ -179,11 +181,11 @@ function CanvasApp() {
   const [newConversationPending, setNewConversationPending] = useState(false);
 
   const messagesRef = useRef([]);
-  const lastTypoRef = useRef(null);
   const splitLocksRef = useRef(new Set());
   const brandLocksRef = useRef(new Set());
   const optimizationLocksRef = useRef(new Set());
   const chatPanelRef = useRef(null);
+  const canvasMainRef = useRef(null);
   const chatInputRef = useRef(null);
   const nodesRef = useRef([]);
   const viewportRef = useRef({ x: 0, y: 0, zoom: 1 });
@@ -252,16 +254,13 @@ function CanvasApp() {
     setMessages(list);
   }, []);
 
-  const addImageNode = useCallback((kind, url, name, objectKey, placement = null) => {
-    const isTypography = kind === "typography";
-    const row = isTypography ? rowCounter++ : Math.max(0, rowCounter - 1);
-    const id = `${kind}-${row}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+  const addImageNode = useCallback((kind, url, name, objectKey) => {
+    const id = `${kind}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
     const labels = { typography: "第一步版式图", kv: "完整 KV", title: "标题图层", background: "背景图层" };
-    const xByKind = { typography: 80, kv: 420, title: 760, background: 1100 };
     const node = {
       id,
       type: "image",
-      position: placement || { x: xByKind[kind] ?? 420, y: 110 + row * 340 },
+      position: { x: 80, y: 110 },
       data: {
         nodeId: id,
         kind,
@@ -269,6 +268,7 @@ function CanvasApp() {
         name,
         objectKey: objectKey || (name ? `outputs/${name}` : ""),
         label: labels[kind] || "完整 KV",
+        aspectRatio: canvasAspectRatio(composerSettings.image_size || "3:4"),
         onSplit: (data) => splitHandlerRef.current(data),
         onBrand: (data) => brandHandlerRef.current(data),
         onVersion: (nodeId, version) => setNodes((current) => current.map((item) => item.id === nodeId ? { ...item, data: { ...item.data, displayVersion: version } } : item)),
@@ -276,12 +276,28 @@ function CanvasApp() {
       },
     };
     pushHistory();
-    setNodes((current) => [...current, node]);
-    if (isTypography) {
-      lastTypoRef.current = id;
-    }
+    setNodes((current) => [...current, { ...node, position: nextCanvasNodePosition(current) }]);
     return node;
-  }, [pushHistory, setNodes]);
+  }, [composerSettings.image_size, pushHistory, setNodes]);
+
+  const loadingPosition = useCallback((aspectRatio, viewport = viewportRef.current) => {
+    const pane = canvasMainRef.current;
+    return centeredLoadingNodePosition({
+      paneWidth: pane?.clientWidth || 0,
+      paneHeight: pane?.clientHeight || 0,
+      viewport,
+      aspectRatio,
+    });
+  }, []);
+
+  const centerLoadingNode = useCallback((viewport = viewportRef.current) => {
+    setLoadingNode((current) => {
+      if (!current) return current;
+      const position = loadingPosition(current.data?.aspectRatio || "3 / 4", viewport);
+      if (Math.abs(current.position.x - position.x) < 0.01 && Math.abs(current.position.y - position.y) < 0.01) return current;
+      return { ...current, position };
+    });
+  }, [loadingPosition]);
 
   const updateOptimizationNode = useCallback((objectKey, patch) => {
     setNodes((current) => current.map((node) => (
@@ -291,7 +307,7 @@ function CanvasApp() {
     )));
   }, [setNodes]);
 
-  const parseSse = useCallback(async (response, context = {}) => {
+  const parseSse = useCallback(async (response) => {
     requireInvite(response);
     if (!response.ok || !response.body) {
       const payload = await response.json().catch(() => ({}));
@@ -332,7 +348,7 @@ function CanvasApp() {
           if (layer && !layer.skipped) addImageNode("typography", layer.url, layer.name, layer.object_key);
         } else if (event === "scene") {
           const layer = payload.scene_layer;
-          if (layer && !layer.skipped) addImageNode("kv", layer.url, layer.name, layer.object_key, context.outputPosition || null);
+          if (layer && !layer.skipped) addImageNode("kv", layer.url, layer.name, layer.object_key);
         } else if (event === "image") {
           const image = payload.image_result;
           if (image && !image.skipped && image.url) {
@@ -437,20 +453,18 @@ function CanvasApp() {
       .filter((message) => message.kind !== "status" && String(message.content || "").trim())
       .slice(-12)
       .map(({ role, content }) => ({ role, content }));
-    const outputPosition = baseNode
-      ? { x: baseNode.position.x + 340, y: baseNode.position.y }
-      : { x: 80, y: 110 };
+    const loadingAspectRatio = canvasAspectRatio(payload.image_size || composerSettings.image_size || "3:4");
     setGenerating(true);
     setLoadingNode({
       id: `loading-${Date.now()}`,
       type: "loading",
-      position: outputPosition,
+      position: loadingPosition(loadingAspectRatio),
       selectable: false,
       draggable: false,
       deletable: false,
       data: {
         label: baseNode ? "正在基于选中图片编辑......" : "图片正在生成中......",
-        aspectRatio: canvasAspectRatio(payload.image_size || composerSettings.image_size || "3:4"),
+        aspectRatio: loadingAspectRatio,
       },
     });
     if (!options.retry) {
@@ -492,7 +506,7 @@ function CanvasApp() {
       body.append("reference_labels", JSON.stringify(referenceLabels));
       referenceFiles.forEach((file, index) => body.append(`reference_image_${index}`, file, file.name));
       const response = await fetch("/api/run-stream", { method: "POST", headers: authHeaders(), body });
-      const result = await parseSse(response, { outputPosition: baseNode ? outputPosition : null });
+      const result = await parseSse(response);
       const optimization = result?.optimization;
       const draftKey = optimization?.draft_image?.object_key || result?.image_result?.object_key;
       if (draftKey && optimization) {
@@ -518,7 +532,7 @@ function CanvasApp() {
       setLoadingNode(null);
       setGenerating(false);
     }
-  }, [generating, session, composerSettings.image_size, parseSse, appendMessage, updateStatusMessage, updateOptimizationNode, runOptimization]);
+  }, [generating, session, composerSettings.image_size, loadingPosition, parseSse, appendMessage, updateStatusMessage, updateOptimizationNode, runOptimization]);
 
   const retryLastGeneration = useCallback(() => {
     if (generating || !lastGenerationRequestRef.current) return;
@@ -567,20 +581,17 @@ function CanvasApp() {
   const handleBrandOverlay = useCallback(async (data) => {
     const lockKey = data.objectKey || data.name;
     if (generating || !lockKey || brandLocksRef.current.has(lockKey) || !session?.projectId) return;
-    const sourceNode = nodesRef.current.find((node) => node.id === data.nodeId || node.data?.objectKey === data.objectKey);
-    const outputPosition = sourceNode
-      ? { x: sourceNode.position.x + 340, y: sourceNode.position.y }
-      : { x: 420, y: 110 };
+    const loadingAspectRatio = canvasAspectRatio(composerSettings.image_size);
     brandLocksRef.current.add(lockKey);
     setGenerating(true);
     setLoadingNode({
       id: `loading-brand-${Date.now()}`,
       type: "loading",
-      position: outputPosition,
+      position: loadingPosition(loadingAspectRatio),
       selectable: false,
       draggable: false,
       deletable: false,
-      data: { label: "正在添加抖音商城 Logo......", aspectRatio: canvasAspectRatio(composerSettings.image_size) },
+      data: { label: "正在添加抖音商城 Logo......", aspectRatio: loadingAspectRatio },
     });
     appendMessage("user", "为选中图片添加抖音商城 Logo 和右下角搜索框");
     updateStatusMessage("正在叠加抖音商城 Logo 与搜索框...");
@@ -598,7 +609,7 @@ function CanvasApp() {
       requireInvite(response);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Logo 叠加失败");
-      addImageNode("kv", payload.url, payload.name, payload.object_key, outputPosition);
+      addImageNode("kv", payload.url, payload.name, payload.object_key);
       appendMessage("assistant", "已基于选中图片添加抖音商城 Logo 与搜索框。", {
         image: payload.url,
         imageObjectKey: payload.object_key || "",
@@ -612,7 +623,7 @@ function CanvasApp() {
       setGenerating(false);
       brandLocksRef.current.delete(lockKey);
     }
-  }, [generating, session, title, composerSettings.image_size, addImageNode, appendMessage, updateStatusMessage]);
+  }, [generating, session, title, composerSettings.image_size, loadingPosition, addImageNode, appendMessage, updateStatusMessage]);
 
   const brandHandlerRef = useRef(handleBrandOverlay);
   brandHandlerRef.current = handleBrandOverlay;
@@ -631,6 +642,7 @@ function CanvasApp() {
         optimization_job_id: node.data?.optimizationJobId || "",
         optimization_status: node.data?.optimizationStatus || "",
         optimization_reason: node.data?.optimizationReason || "",
+        aspect_ratio: node.data?.aspectRatio || "",
         x: Math.round(node.position.x),
         y: Math.round(node.position.y),
       })).filter((element) => element.object_key),
@@ -651,6 +663,14 @@ function CanvasApp() {
   }, [session, title]);
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+
+  useEffect(() => {
+    const pane = canvasMainRef.current;
+    if (!pane || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => centerLoadingNode(viewportRef.current));
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [centerLoadingNode]);
 
   useEffect(() => {
     const sync = (event) => {
@@ -682,8 +702,6 @@ function CanvasApp() {
 
   useEffect(() => {
     window.__startCanvasSession = (init) => {
-      rowCounter = 0;
-      lastTypoRef.current = null;
       splitLocksRef.current.clear();
       brandLocksRef.current.clear();
       optimizationLocksRef.current.clear();
@@ -751,6 +769,7 @@ function CanvasApp() {
           optimizationJobId: element.optimization_job_id || "",
           optimizationStatus: element.optimization_status || "",
           optimizationReason: element.optimization_reason || "",
+          aspectRatio: canvasAspectRatio(element.aspect_ratio || project?.settings?.image_size || "3:4"),
           displayVersion: element.final_object_key ? "final" : "draft",
         },
       }));
@@ -941,7 +960,7 @@ function CanvasApp() {
 
   return (
     <div className="canvas-app-shell">
-      <div className="canvas-app-main">
+      <div className="canvas-app-main" ref={canvasMainRef}>
         <div className="cf-canvas-title">
           <button type="button" className="cf-canvas-title-icon" onClick={goHome} title="保存并返回主页">
             <img src="/ui-assets/neo-brand.png" alt="返回主页" />
@@ -972,6 +991,10 @@ function CanvasApp() {
           onInit={setFlowInstance}
           onNodeDragStart={() => pushHistory()}
           onSelectionChange={({ nodes: selectedNodes }) => setSelectedNodeId(selectedNodes.find((node) => node.type === "image")?.id || "")}
+          onMove={(_, viewport) => {
+            viewportRef.current = viewport;
+            centerLoadingNode(viewport);
+          }}
           onMoveEnd={(_, viewport) => { viewportRef.current = viewport; }}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
           minZoom={0.1}
