@@ -279,18 +279,6 @@ function setToolToggleEnabled(button, enabled) {
   button.setAttribute("aria-pressed", enabled ? "true" : "false");
 }
 
-function autoResizeDescription() {
-  const styles = getComputedStyle(visualDescriptionInput);
-  const lineHeight = Number.parseFloat(styles.lineHeight) || 22.4;
-  const minHeight = Number.parseFloat(styles.minHeight) || 48;
-  const maxHeight = lineHeight * 5;
-  visualDescriptionInput.style.height = "0px";
-  const contentHeight = visualDescriptionInput.scrollHeight;
-  const nextHeight = Math.max(minHeight, Math.min(contentHeight, maxHeight));
-  visualDescriptionInput.style.height = `${nextHeight}px`;
-  visualDescriptionInput.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
-}
-
 function showView(view) {
   document.querySelectorAll(".neo-page").forEach((page) => {
     page.classList.toggle("active", page.id === `${view}Page`);
@@ -1040,7 +1028,6 @@ async function expandDescription() {
     if (!response.ok) throw new Error(result.error || "扩写失败");
     visualDescriptionInput.value = result.expanded_description || source;
     window.dispatchEvent(new CustomEvent("refra:canvas-prompt", { detail: { value: visualDescriptionInput.value } }));
-    autoResizeDescription();
     visualDescriptionInput.focus();
     visualDescriptionInput.setSelectionRange(visualDescriptionInput.value.length, visualDescriptionInput.value.length);
     renderMentionMenu();
@@ -2169,7 +2156,6 @@ uploadTrigger.addEventListener("click", () => referenceImageInput.click());
 referenceImageInput.addEventListener("change", () => addReferenceFiles(referenceImageInput.files || []));
 visualDescriptionInput.addEventListener("paste", handleVisualDescriptionPaste);
 visualDescriptionInput.addEventListener("input", renderMentionMenu);
-visualDescriptionInput.addEventListener("input", autoResizeDescription);
 visualDescriptionInput.addEventListener("click", renderMentionMenu);
 visualDescriptionInput.addEventListener("keyup", renderMentionMenu);
 visualDescriptionInput.addEventListener("input", () => {
@@ -2489,7 +2475,6 @@ materialSameButton.addEventListener("click", () => {
     return;
   }
   visualDescriptionInput.value = description;
-  autoResizeDescription();
   closeMaterialDetail();
   openGenerateComposer();
   setError("");
