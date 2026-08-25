@@ -5040,6 +5040,43 @@ body, button, input, textarea, select { font-family: "Douyin Number ABC", "PingF
   cursor: pointer;
 }
 
+.cf-msg-regenerate {
+  width: 92px;
+  height: 30px;
+  margin-top: 8px;
+  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  gap: 4px;
+  border: 0;
+  border-radius: 9.211px;
+  background: #232323;
+  color: #fff;
+  font-size: 12px;
+  line-height: 21.877px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cf-msg-regenerate:hover,
+.cf-msg-regenerate:focus-visible {
+  background: #232323;
+  color: #fff;
+}
+
+.cf-msg-regenerate:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.cf-msg-regenerate img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
 .cf-chat-composer {
   height: 160px;
   min-height: 160px;

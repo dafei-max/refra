@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import OSS from "ali-oss";
 
@@ -24,6 +25,7 @@ export class StorageError extends Error {
     this.name = "StorageError";
     this.code = options.code || "STORAGE_ERROR";
     this.statusCode = options.statusCode || 500;
+    this.logId = options.logId || "";
   }
 }
 
@@ -33,9 +35,55 @@ let ossClient = null;
 let ossSigningClient = null;
 let signedUrlTtl = DEFAULT_SIGNED_URL_TTL;
 let initialized = false;
+let configuredRetryMax = DEFAULT_OSS_RETRY_MAX;
 
 function textOf(value) {
   return value == null ? "" : String(value).trim();
+}
+
+function safeErrorValue(value, maxLength = 120) {
+  return textOf(value).replace(/[\r\n\t]/g, " ").slice(0, maxLength);
+}
+
+function classifyStorageFailure(error) {
+  const code = safeErrorValue(error?.code || error?.name).toUpperCase();
+  const status = Number(error?.status || error?.statusCode || error?.res?.status || 0);
+  const message = textOf(error?.message).toLowerCase();
+  if (code.includes("ETIMEDOUT") || code.includes("TIMEOUT") || message.includes("timeout") || message.includes("timed out")) return "timeout";
+  if (code.includes("ECONNRESET") || message.includes("socket hang up")) return "connection_reset";
+  if (code.includes("ENOTFOUND") || code.includes("EAI_AGAIN")) return "dns";
+  if (status === 401 || status === 403) return "authorization";
+  if (status === 429) return "throttled";
+  if (status >= 500) return "upstream_5xx";
+  return "unknown";
+}
+
+function storageFailureLogEntry(operation, key, error, metadata = {}) {
+  const normalized = normalizeKey(key);
+  const requestId = error?.requestId
+    || error?.requestid
+    || error?.headers?.["x-oss-request-id"]
+    || error?.res?.headers?.["x-oss-request-id"];
+  return {
+    event: "oss_operation_failed",
+    log_id: randomUUID(),
+    occurred_at: new Date().toISOString(),
+    operation: safeErrorValue(operation, 32),
+    key_scope: normalized.split("/")[0] || "unknown",
+    key_hash: createHash("sha256").update(normalized).digest("hex").slice(0, 16),
+    failure_type: classifyStorageFailure(error),
+    error_code: safeErrorValue(error?.code || error?.name || "UNKNOWN", 64),
+    status_code: Number(error?.status || error?.statusCode || error?.res?.status || 0) || null,
+    oss_request_id: safeErrorValue(requestId, 96) || null,
+    configured_retry_max: configuredRetryMax,
+    byte_size: Number.isFinite(Number(metadata.byteSize)) ? Number(metadata.byteSize) : null,
+  };
+}
+
+function logStorageFailure(operation, key, error, metadata) {
+  const entry = storageFailureLogEntry(operation, key, error, metadata);
+  console.error(`[storage:${entry.log_id}] ${JSON.stringify(entry)}`);
+  return entry.log_id;
 }
 
 export function storageBackend() {
@@ -60,6 +108,7 @@ export function initStorage(options = {}) {
   const accessKeySecret = textOf(env.ALIYUN_OSS_ACCESS_KEY_SECRET);
   const requestTimeoutMs = Math.max(1000, Number(env.OSS_REQUEST_TIMEOUT_MS || DEFAULT_OSS_REQUEST_TIMEOUT_MS));
   const retryMax = Math.max(0, Math.min(5, Number(env.OSS_RETRY_MAX ?? DEFAULT_OSS_RETRY_MAX)));
+  configuredRetryMax = Number.isFinite(retryMax) ? retryMax : DEFAULT_OSS_RETRY_MAX;
   const hasOssConfig = Boolean(region && bucket && accessKeyId && accessKeySecret);
 
   const useOss = forceBackend === "oss" || (isVercel && forceBackend !== "fs");
@@ -138,10 +187,12 @@ export async function storagePut(key, bytes, options = {}) {
         headers: options.contentType ? { "Content-Type": options.contentType } : undefined,
       });
     } catch (error) {
+      const logId = logStorageFailure("put", normalized, error, { byteSize: buffer.length });
       throw new StorageError("OSS 暂时不可用，请稍后重试", {
         code: "STORAGE_UNAVAILABLE",
         statusCode: 503,
         cause: error,
+        logId,
       });
     }
     return { key: normalized };
@@ -173,10 +224,12 @@ export async function storageGet(key) {
       if (status === 404 || /NoSuchKey|specified key does not exist/i.test(message)) {
         throw new StorageError(`对象不存在: ${normalized}`, { code: "NOT_FOUND", statusCode: 404 });
       }
+      const logId = logStorageFailure("get", normalized, error);
       throw new StorageError("OSS 暂时不可用，请稍后重试", {
         code: "STORAGE_UNAVAILABLE",
         statusCode: 503,
         cause: error,
+        logId,
       });
     }
   }
@@ -198,10 +251,12 @@ export async function storageExists(key) {
       const status = error?.status || error?.statusCode || error?.code;
       const message = String(error?.message || "");
       if (status === 404 || /NoSuchKey|specified key does not exist/i.test(message)) return false;
+      const logId = logStorageFailure("head", normalized, error);
       throw new StorageError("OSS 暂时不可用，请稍后重试", {
         code: "STORAGE_UNAVAILABLE",
         statusCode: 503,
         cause: error,
+        logId,
       });
     }
   }
@@ -219,10 +274,12 @@ export async function storageDelete(key) {
       const status = error?.status || error?.statusCode || error?.code;
       const message = String(error?.message || "");
       if (status === 404 || /NoSuchKey|specified key does not exist/i.test(message)) return false;
+      const logId = logStorageFailure("delete", normalized, error);
       throw new StorageError("OSS 暂时不可用，请稍后重试", {
         code: "STORAGE_UNAVAILABLE",
         statusCode: 503,
         cause: error,
+        logId,
       });
     }
   }
@@ -262,5 +319,7 @@ export const __storageTesting = {
   DEFAULT_OSS_RETRY_MAX,
   operationEndpointHostname: () => ossClient?.options?.endpoint?.hostname || "",
   signingEndpointHostname: () => ossSigningClient?.options?.endpoint?.hostname || "",
+  classifyStorageFailure,
+  storageFailureLogEntry,
   normalizeKey,
 };

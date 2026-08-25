@@ -190,6 +190,7 @@ function CanvasApp() {
   const hydratingRef = useRef(false);
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
+  const lastGenerationRequestRef = useRef(null);
 
   const nodeSnapshot = useCallback((list) => list.map((node) => ({
     ...node,
@@ -424,6 +425,14 @@ function CanvasApp() {
       updateStatusMessage("当前选中图片尚未保存，暂时不能继续编辑");
       return;
     }
+    const requestFiles = files.length
+      ? [...files]
+      : (typeof window.__getReferenceFiles === "function" ? [...window.__getReferenceFiles()] : []);
+    lastGenerationRequestRef.current = {
+      payload: { ...payload },
+      files: requestFiles,
+      baseNodeId: baseNode?.id || "",
+    };
     const conversationHistory = messagesRef.current
       .filter((message) => message.kind !== "status" && String(message.content || "").trim())
       .slice(-12)
@@ -444,12 +453,14 @@ function CanvasApp() {
         aspectRatio: canvasAspectRatio(payload.image_size || composerSettings.image_size || "3:4"),
       },
     });
-    appendMessage("user", text);
-    fetch(`/api/projects/${encodeURIComponent(session.projectId)}/messages`, {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ role: "user", content: text }),
-    }).then(requireInvite).catch(() => {});
+    if (!options.retry) {
+      appendMessage("user", text);
+      fetch(`/api/projects/${encodeURIComponent(session.projectId)}/messages`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ role: "user", content: text }),
+      }).then(requireInvite).catch(() => {});
+    }
     const currentSettings = typeof window.__getCanvasSettings === "function" ? window.__getCanvasSettings() : {};
     const merged = { ...(session.project?.settings || {}), ...currentSettings, ...payload };
     try {
@@ -474,7 +485,7 @@ function CanvasApp() {
         auto_optimize: merged.auto_optimize === false ? "false" : "true",
       };
       for (const [key, value] of Object.entries(fields)) body.append(key, String(value));
-      const referenceFiles = files.length ? files : (typeof window.__getReferenceFiles === "function" ? window.__getReferenceFiles() : []);
+      const referenceFiles = requestFiles;
       const referenceLabels = typeof window.__getReferenceLabels === "function"
         ? window.__getReferenceLabels().slice(0, referenceFiles.length)
         : referenceFiles.map((_, index) => `图${index + 1}`);
@@ -502,12 +513,22 @@ function CanvasApp() {
         updateStatusMessage("生成完成");
       }
     } catch (error) {
-      updateStatusMessage(`生成失败：${error.message}`);
+      updateStatusMessage(`生成失败：${error.message}`, { retryGeneration: true });
     } finally {
       setLoadingNode(null);
       setGenerating(false);
     }
   }, [generating, session, composerSettings.image_size, parseSse, appendMessage, updateStatusMessage, updateOptimizationNode, runOptimization]);
+
+  const retryLastGeneration = useCallback(() => {
+    if (generating || !lastGenerationRequestRef.current) return;
+    const snapshot = lastGenerationRequestRef.current;
+    const baseNode = snapshot.baseNodeId
+      ? nodesRef.current.find((node) => node.id === snapshot.baseNodeId) || null
+      : null;
+    updateStatusMessage("正在重新生成…");
+    void runGeneration(snapshot.payload, snapshot.files, { baseNode, retry: true });
+  }, [generating, runGeneration, updateStatusMessage]);
 
   const handleSplit = useCallback(async (data) => {
     const lockKey = data.objectKey || data.name;
@@ -993,6 +1014,12 @@ function CanvasApp() {
                 {message.content ? <div className="cf-msg">{message.content}</div> : null}
                 {message.optimizationReason ? <div className="cf-msg-optimization-reason">已优化：{message.optimizationReason}</div> : null}
                 {message.retryOptimizationJobId ? <button type="button" className="cf-msg-retry-optimization" onClick={() => runOptimization(message.retryOptimizationJobId, true)}>重新优化</button> : null}
+                {message.retryGeneration ? (
+                  <button type="button" className="cf-msg-regenerate" disabled={generating} onClick={retryLastGeneration}>
+                    <img src="/ui-assets/icon/regenerate.svg" alt="" />
+                    <span>{generating ? "生成中" : "重新生成"}</span>
+                  </button>
+                ) : null}
                 {message.image ? <div className="cf-msg cf-msg-image"><img src={message.image} alt={message.imageName || ""} /></div> : null}
               </div>
             ))}

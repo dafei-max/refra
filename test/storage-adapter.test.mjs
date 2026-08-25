@@ -68,6 +68,25 @@ test("OSS 默认启用有界的超时重试", () => {
   assert.equal(__storageTesting.DEFAULT_OSS_RETRY_MAX, 2);
 });
 
+test("OSS 失败日志只记录安全诊断字段", () => {
+  const entry = __storageTesting.storageFailureLogEntry(
+    "get",
+    "data/projects.json",
+    {
+      code: "ETIMEDOUT",
+      message: "connect timed out https://example.invalid/?AccessKeySecret=do-not-log",
+      requestId: "oss-request-safe-id",
+    },
+  );
+  assert.equal(entry.event, "oss_operation_failed");
+  assert.equal(entry.operation, "get");
+  assert.equal(entry.key_scope, "data");
+  assert.equal(entry.failure_type, "timeout");
+  assert.equal(entry.oss_request_id, "oss-request-safe-id");
+  assert.match(entry.key_hash, /^[a-f0-9]{16}$/);
+  assert.doesNotMatch(JSON.stringify(entry), /projects\.json|AccessKeySecret|do-not-log|example\.invalid/);
+});
+
 test("OSS 服务端读写走传输加速，浏览器签名链接保留区域端点", (t) => {
   t.after(() => initStorage({ env: { STORAGE_BACKEND: "fs" }, runtimeRoot: tmpdir() }));
 

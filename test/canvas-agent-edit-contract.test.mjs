@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const [app, canvas, index, styles, server, splitIcon, downloadIcon, newChatIcon] = await Promise.all([
+const [app, canvas, index, styles, server, splitIcon, downloadIcon, newChatIcon, regenerateIcon] = await Promise.all([
   readFile(path.join(root, "public", "app.js"), "utf-8"),
   readFile(path.join(root, "frontend", "canvas.jsx"), "utf-8"),
   readFile(path.join(root, "public", "index.html"), "utf-8"),
@@ -14,6 +14,7 @@ const [app, canvas, index, styles, server, splitIcon, downloadIcon, newChatIcon]
   readFile(path.join(root, "public", "ui-assets", "icon", "canvas-split.svg"), "utf-8"),
   readFile(path.join(root, "public", "ui-assets", "icon", "canvas-download.svg"), "utf-8"),
   readFile(path.join(root, "public", "ui-assets", "icon", "canvas-new-chat.svg"), "utf-8"),
+  readFile(path.join(root, "public", "ui-assets", "icon", "regenerate.svg"), "utf-8"),
 ]);
 
 test("home inspiration discovery is hidden and no longer requested on canvas return", () => {
@@ -64,6 +65,16 @@ test("follow-up chat edits the selected project image with bounded history", () 
   assert.match(server, /图 1 是当前选中的完整基础图，也是最高优先级固定画布/);
   assert.match(server, /projectImageElement\(request\.project_id/);
   assert.match(server, /generation_mode: "canvas-edit"/);
+});
+
+test("failed canvas generations keep a safe one-click retry snapshot", () => {
+  assert.match(canvas, /lastGenerationRequestRef/);
+  assert.match(canvas, /retryGeneration: true/);
+  assert.match(canvas, /if \(!options\.retry\)/);
+  assert.match(canvas, /void runGeneration\(snapshot\.payload, snapshot\.files, \{ baseNode, retry: true \}\)/);
+  assert.match(canvas, /className="cf-msg-regenerate"/);
+  assert.match(styles, /\.cf-msg-regenerate\s*\{[\s\S]*?width: 92px;[\s\S]*?height: 30px;/);
+  assert.match(regenerateIcon, /<svg/);
 });
 
 test("selected image branding creates a protected derivative and toolbar icons are supplied", () => {
