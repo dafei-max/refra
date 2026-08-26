@@ -4,8 +4,11 @@ import { readFile } from "node:fs/promises";
 import {
   SKILL_PLAN_SCHEMA,
   SKILL_REVIEW_SCHEMA,
+  SKILL_SELECTION_SCHEMA,
+  authorizedCopyInvariants,
   buildTargetedEditPrompt,
   normalizeOptimizationMode,
+  protectAuthorizedCopyReview,
   shouldTriggerOptimization,
   skillVersionFor,
   styleFingerprintCacheKey,
@@ -35,7 +38,29 @@ test("targeted edit prompt fixes one problem and preserves input order semantics
   assert.match(prompt, /Image 2 is the design-language reference only\./);
   assert.match(prompt, /Fix only this structural problem:\n主体与陪体互不接触/);
   assert.match(prompt, /Do not redesign unrelated parts\./);
-  assert.match(prompt, /Do not add new objects, text, logos or decorations\./);
+  assert.match(prompt, /Do not add new objects or decorations\./);
+  assert.match(prompt, /Do not add, remove, rewrite, move or restyle any readable text/);
+});
+
+test("authorized campaign copy cannot be misclassified as invented text", () => {
+  const request = {
+    campaign_name: "奔赴一场购物奇遇",
+    campaign_subtitle: "带上热爱出发，收集生活所有缤纷",
+    campaign_time: "1.12-2.12",
+  };
+  const guarded = protectAuthorizedCopyReview({
+    needs_revision: true,
+    severity: 0.9,
+    problem_type: "invented_text",
+    max_problem: "画面新增了大段可读标题与日期文字，违反“不新增任何文字、logo、水印、价格或可读字符”",
+    evidence: ["顶部出现标题和日期"],
+    edit_instructions: ["删除顶部标题", "移除日期文字"],
+    strict_invariants: [],
+  }, request);
+  assert.equal(guarded.needs_revision, false);
+  assert.equal(guarded.problem_type, "authorized_copy_protected");
+  assert.equal(guarded.edit_instructions.length, 0);
+  assert.equal(authorizedCopyInvariants(request).length, 3);
 });
 
 test("skill/reference cache key is stable and timing summary reports p50/p95", () => {
@@ -58,17 +83,25 @@ test("structured schemas require every requested planning and review field", () 
   assert.deepEqual(SKILL_REVIEW_SCHEMA.required, [
     "needs_revision", "severity", "problem_type", "max_problem", "evidence", "edit_instructions", "strict_invariants",
   ]);
+  assert.deepEqual(SKILL_SELECTION_SCHEMA.required, [
+    "selected_output", "target_problem_fixed", "regression_detected", "reason",
+  ]);
   assert.equal(SKILL_PLAN_SCHEMA.additionalProperties, false);
   assert.equal(SKILL_REVIEW_SCHEMA.additionalProperties, false);
+  assert.equal(SKILL_SELECTION_SCHEMA.additionalProperties, false);
 });
 
 test("server contract uses reference edit for draft, correct second-round order, and one attempt", async () => {
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   assert.match(server, /planSkillGeneration\(\{[\s\S]*?skill:\s*skillRuntime[\s\S]*?references:\s*promptReferences/);
   assert.match(server, /generateLayeredImage\([\s\S]*?quality:\s*"low"[\s\S]*?partialImages:\s*1/);
-  assert.match(server, /selected:\s*\[draftReference, styleReference\]\.filter\(Boolean\)[\s\S]*?quality:\s*"medium"/);
+  assert.match(server, /selected:\s*\[draftReference, typographyReference, styleReference\]\.filter\(Boolean\)[\s\S]*?quality:\s*"medium"/);
   assert.match(server, /optimization_attempts:\s*1/);
   assert.match(server, /optimization_status:\s*"failed"[\s\S]*?final_image:\s*job\.draft_image/);
+  assert.match(server, /name:\s*"skill_optimized_selection"/);
+  assert.match(server, /optimization_status:\s*selectSecond \? "edited_selected" : "edited_rejected"/);
+  assert.match(server, /const autoOptimize = booleanPreference\(body\.auto_optimize, true\)/);
+  assert.match(server, /optimization_mode: normalizeOptimizationMode\(body\.optimization_mode, autoOptimize\)/);
   assert.doesNotMatch(server, /while\s*\([\s\S]{0,300}optimization/);
 });
 
@@ -80,6 +113,9 @@ test("canvas contract exposes draft immediately, then optimized version and retr
   assert.match(canvas, /查看优化版/);
   assert.match(canvas, /重新优化/);
   assert.match(canvas, /void runOptimization/);
+  assert.match(canvas, /const fastMode = optimization\.mode === "fast"/);
+  assert.match(canvas, /displayVersion: fastMode \? "final" : "draft"/);
+  assert.match(canvas, /job\?\.selected_output === "second" \? "final" : "draft"/);
   assert.match(canvas, /ui-assets\/icon\/image\.svg/);
   assert.doesNotMatch(canvas, /className="cf-node-version-bar"/);
   assert.doesNotMatch(canvas, /className="cf-node-optimization-reason"/);

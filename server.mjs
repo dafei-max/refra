@@ -30,8 +30,11 @@ import {
 import {
   SKILL_PLAN_SCHEMA,
   SKILL_REVIEW_SCHEMA,
+  SKILL_SELECTION_SCHEMA,
+  authorizedCopyInvariants,
   buildTargetedEditPrompt,
   normalizeOptimizationMode,
+  protectAuthorizedCopyReview,
   publicOptimizationJob,
   referenceHashFor,
   shouldTriggerOptimization,
@@ -2863,6 +2866,8 @@ async function persistAssetRecord(result) {
       || (result.optimization?.mode === "smart" ? "" : image.object_key || ""),
     optimization_job_id: optimizationJobId,
     review_result: result.optimization?.review_result || null,
+    selection_result: result.optimization?.selection_result || null,
+    selected_output: result.optimization?.selected_output || "",
     optimization_triggered: Boolean(result.optimization?.optimization_triggered),
     optimization_status: result.optimization?.optimization_status || "not_requested",
     optimization_error: result.optimization?.optimization_error || "",
@@ -2924,6 +2929,8 @@ async function createSkillOptimizationJob({ result, skill, skillPlan, styleRefer
     draft_image: result.image_result,
     final_image: mode === "smart" ? null : result.image_result,
     review_result: null,
+    selection_result: null,
+    selected_output: mode === "smart" ? "" : "first",
     optimization_triggered: false,
     optimization_status: mode === "smart" ? "pending" : "skipped_fast_mode",
     optimization_error: "",
@@ -2935,7 +2942,7 @@ async function createSkillOptimizationJob({ result, skill, skillPlan, styleRefer
   return saveGenerationJob(job);
 }
 
-function normalizeSkillReview(review = {}, plan = {}) {
+function normalizeSkillReview(review = {}, plan = {}, request = {}) {
   const needsRevision = review.needs_revision === true;
   const instructions = Array.isArray(review.edit_instructions) ? review.edit_instructions.filter(Boolean).slice(0, 8) : [];
   if (needsRevision && instructions.length > 0 && instructions.length < 4) {
@@ -2947,7 +2954,7 @@ function normalizeSkillReview(review = {}, plan = {}) {
     ];
     for (const item of supplements) if (instructions.length < 4 && !instructions.includes(item)) instructions.push(item);
   }
-  return {
+  const normalized = {
     needs_revision: needsRevision,
     severity: Math.min(1, Math.max(0, Number(review.severity) || 0)),
     problem_type: textOf(review.problem_type).slice(0, 120),
@@ -2958,8 +2965,10 @@ function normalizeSkillReview(review = {}, plan = {}) {
       ...(review.strict_invariants || []),
       ...(plan.content_invariants || []),
       ...(plan.style_invariants || []),
+      ...authorizedCopyInvariants(request),
     ].filter(Boolean))].slice(0, 16),
   };
+  return protectAuthorizedCopyReview(normalized, request);
 }
 
 const optimizationJobLocks = new Map();
@@ -2976,6 +2985,8 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
         optimization_status: "pending",
         optimization_error: "",
         optimization_attempts: 0,
+        selection_result: null,
+        selected_output: "",
       });
     }
     if (job.optimization_attempts >= 1 || ["completed", "optimizing"].includes(job.status)) return decorateGenerationJob(job);
@@ -2983,7 +2994,7 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
     const reviewStartedAt = Date.now();
     const preset = presetByStyleId(job.skill_id);
     const skill = loadSkillRuntime(preset);
-    const styleReference = job.reference_images?.[0] || null;
+    const styleReference = job.reference_images?.[0] ? { ...job.reference_images[0] } : null;
     const draftReference = outputReference(
       job.draft_image?.url || "",
       "Image 1 — edit target",
@@ -2991,9 +3002,20 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
       "",
       job.draft_image?.object_key || "",
     );
+    const typographyLayer = job.draft_image?.layers?.typography || null;
+    const typographyReference = typographyLayer?.object_key
+      ? outputReference(
+        typographyLayer.url || storageSignUrl(typographyLayer.object_key),
+        "Image 2 — fixed typography/layout reference",
+        "第一步生成的固定信息层；其中用户授权的主标题、副标题、活动时间及其版式必须原样保留。",
+        "",
+        typographyLayer.object_key,
+      )
+      : null;
     if (styleReference) {
-      styleReference.label = "Image 2 — design-language reference only";
-      styleReference.number = styleReference.number || "Image 2";
+      const styleIndex = typographyReference ? 3 : 2;
+      styleReference.label = `Image ${styleIndex} — design-language reference only`;
+      styleReference.number = styleReference.number || `Image ${styleIndex}`;
     }
     job = await updateGenerationJob(jobId, { status: "reviewing", optimization_status: "reviewing", optimization_attempts: 1 });
     onStage("optimization_status", { status: "reviewing", message: "正在检查画面结构", job: decorateGenerationJob(job) });
@@ -3004,20 +3026,25 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
         schema: SKILL_REVIEW_SCHEMA,
         reasoningEffort: SKILL_REVIEW_REASONING_EFFORT,
         maxOutputTokens: 1800,
-        references: [draftReference, styleReference].filter(Boolean),
+        references: [draftReference, typographyReference, styleReference].filter(Boolean),
         system: [
-          "你是商业 KV 结构评审器。只判断一个影响最大的结构问题，不输出长篇分析。",
-          "依次检查：唯一主焦点；主体与陪体的接触/遮挡/穿插/负空间；是否完整独立并排；动作轴/比例跳跃/整体轮廓；环境承托；边缘颗粒描边深度系统；用户内容缺失。",
+          "你是商业 KV 评审器。严格遵守完整 Skill 的 auto-optimization 优先级，只判断一个影响最大的可定位问题，不输出长篇分析。",
+          "先检查用户授权文案是否逐字正确、完整、可读，再检查版式契约、主体与关系骨架、风格系统、配色与装饰。",
+          "用户 Brief 中的主标题、副标题和活动时间是授权且必须出现的固定文案；绝不能因为设计语法参考图没有这些文字，就把它们判定为新增文字。‘禁止新增文字’只约束 Brief 未提供的文案。",
+          "若认为存在未授权文字，evidence 必须逐字引用该文字，并说明它不属于授权文案；不能只写‘出现大段标题/日期/可读字符’。",
           "edit_instructions 必须是 4-8 条直接可执行动作。禁止使用‘更高级’‘更有设计感’等抽象表述。合格时 needs_revision=false 且 edit_instructions 为空。",
         ].join("\n"),
         user: [
           `【用户 Brief】\n${JSON.stringify(job.brief, null, 2)}`,
+          `【授权文案白名单】\n${authorizedCopyInvariants(job.request).join("\n") || "无授权可读文案"}`,
           `【完整 Skill｜版本 ${skill.version}】\n${skill.content}`,
           `【首轮规划】\n${JSON.stringify(job.skill_plan, null, 2)}`,
-          "Image 1 是首张完整 KV；Image 2 是原始 reference-library 设计语法参考。只选一个最大问题。",
+          typographyReference
+            ? "Image 1 是首张完整 KV；Image 2 是固定文字版式层；Image 3 是 reference-library 设计语法参考。只选一个最大问题。"
+            : "Image 1 是首张完整 KV；Image 2 是 reference-library 设计语法参考。只选一个最大问题。",
         ].join("\n\n"),
       });
-      review = normalizeSkillReview(review, job.skill_plan || {});
+      review = normalizeSkillReview(review, job.skill_plan || {}, job.request || {});
     } catch (error) {
       const timing = { ...job.timing, review_ms: Date.now() - reviewStartedAt, total_ms: (job.timing?.total_ms || 0) + (Date.now() - startedAt) };
       job = await updateGenerationJob(jobId, {
@@ -3025,6 +3052,7 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
         optimization_status: "review_failed",
         optimization_error: error.message,
         final_image: job.draft_image,
+        selected_output: "first",
         timing,
       });
       const metrics = await appendTimingSample(timing).catch(() => null);
@@ -3040,6 +3068,7 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
         optimization_status: "passed",
         review_result: review,
         final_image: job.draft_image,
+        selected_output: "first",
         timing,
       });
       const metrics = await appendTimingSample(timing).catch(() => null);
@@ -3049,16 +3078,22 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
     job = await updateGenerationJob(jobId, { status: "optimizing", optimization_status: "optimizing", review_result: review, optimization_triggered: true });
     onStage("optimization_status", { status: "optimizing", message: "正在优化主视觉关系", reason: review.max_problem, job: decorateGenerationJob(job) });
     const editStartedAt = Date.now();
+    let editedCandidate = null;
     try {
       const edited = await generateImageEditFile({
-        prompt: buildTargetedEditPrompt(review, review.strict_invariants),
-        selected: [draftReference, styleReference].filter(Boolean),
+        prompt: buildTargetedEditPrompt(review, review.strict_invariants, {
+          hasTypographyReference: Boolean(typographyReference),
+          hasDesignReference: Boolean(styleReference),
+        }),
+        selected: [draftReference, typographyReference, styleReference].filter(Boolean),
         size: job.draft_image?.size || SIZE_MAP[job.request?.image_size] || "768x1024",
         prefix: "kv-skill-optimized",
         quality: "medium",
         applyOverlay: true,
         overlayRequest: job.request || {},
+        keepTemp: IS_OSS,
       });
+      editedCandidate = edited;
       const finalImage = {
         ...publicImageLayer(edited),
         generation_mode: "skill-auto-optimized",
@@ -3068,34 +3103,87 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
           scene: publicImageLayer(edited),
         },
       };
+      const editMs = Date.now() - editStartedAt;
+      const selectionStartedAt = Date.now();
+      const editedReference = outputReference(
+        edited.url || "",
+        "Image 2 — optimized candidate",
+        "针对唯一最大问题生成的精修候选图。",
+        edited.temp_path || edited.output_path || "",
+        edited.object_key || "",
+      );
+      const comparisonTypography = typographyReference
+        ? { ...typographyReference, label: "Image 3 — fixed typography/layout reference", number: "Image 3" }
+        : null;
+      const comparisonStyle = styleReference
+        ? {
+          ...styleReference,
+          label: `Image ${typographyReference ? 4 : 3} — design-language reference only`,
+          number: `Image ${typographyReference ? 4 : 3}`,
+        }
+        : null;
+      const rawSelection = await callStructuredResponses({
+        name: "skill_optimized_selection",
+        schema: SKILL_SELECTION_SCHEMA,
+        reasoningEffort: SKILL_REVIEW_REASONING_EFFORT,
+        maxOutputTokens: 700,
+        references: [draftReference, editedReference, comparisonTypography, comparisonStyle].filter(Boolean),
+        system: [
+          "你是商业 KV 精修择优器。Image 1 是初稿，Image 2 是精修候选。只有唯一目标问题已经修复，且没有产生同级或更严重回归时，才能选择 second。",
+          "用户 Brief 中的主标题、副标题和活动时间是授权固定文案。删除、改写、漏掉、移动或弱化任一授权文案都属于严重回归，必须选择 first。",
+          "固定文字版式参考的文案、位置、层级与样式必须保留。设计语法参考不能覆盖授权文案。只返回简短结构化结论。",
+        ].join("\n"),
+        user: [
+          `【用户 Brief】\n${JSON.stringify(job.brief, null, 2)}`,
+          `【授权文案白名单】\n${authorizedCopyInvariants(job.request).join("\n") || "无授权可读文案"}`,
+          `【本次唯一目标问题】\n${review.max_problem}`,
+          `【本次定向修改】\n${review.edit_instructions.join("\n")}`,
+          "比较 Image 1 和 Image 2。若 Image 2 删除了标题、日期或其他授权信息，必须设置 regression_detected=true 并选择 first。",
+        ].join("\n\n"),
+      });
+      const selectSecond = rawSelection.selected_output === "second"
+        && rawSelection.target_problem_fixed === true
+        && rawSelection.regression_detected !== true;
+      const selectionResult = {
+        ...rawSelection,
+        selected_output: selectSecond ? "second" : "first",
+      };
+      const selectedImage = selectSecond ? finalImage : job.draft_image;
       const timing = {
         ...job.timing,
         review_ms: reviewMs,
-        edit_ms: Date.now() - editStartedAt,
+        edit_ms: editMs,
+        selection_ms: Date.now() - selectionStartedAt,
         total_ms: (job.timing?.total_ms || 0) + (Date.now() - startedAt),
       };
       job = await updateGenerationJob(jobId, {
         status: "completed",
-        optimization_status: "completed",
+        optimization_status: selectSecond ? "edited_selected" : "edited_rejected",
         review_result: review,
-        final_image: finalImage,
+        selection_result: selectionResult,
+        selected_output: selectSecond ? "second" : "first",
+        final_image: selectedImage,
         timing,
       });
       const finalResult = {
         request: job.request,
         brief: job.brief,
         final_prompt: job.generation_prompt,
-        image_result: finalImage,
+        image_result: selectedImage,
         quality_review: review,
         optimization: decorateGenerationJob(job),
       };
       await persistAssetRecord(finalResult);
       if (job.project_id) await appendGenerationToProject(job.project_id, finalResult);
+      if (!selectSecond && edited.object_key) await storageDelete(edited.object_key).catch(() => {});
+      if (edited.temp_path) await unlink(edited.temp_path).catch(() => {});
       const metrics = await appendTimingSample(timing).catch(() => null);
-      onStage("optimized_image", { image_result: finalImage, job: decorateGenerationJob(job) });
+      if (selectSecond) onStage("optimized_image", { image_result: finalImage, job: decorateGenerationJob(job) });
       onStage("optimization_complete", { job: decorateGenerationJob(job), metrics });
       return decorateGenerationJob(job);
     } catch (error) {
+      if (editedCandidate?.object_key) await storageDelete(editedCandidate.object_key).catch(() => {});
+      if (editedCandidate?.temp_path) await unlink(editedCandidate.temp_path).catch(() => {});
       const timing = {
         ...job.timing,
         review_ms: reviewMs,
@@ -3107,6 +3195,7 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
         optimization_status: "failed",
         optimization_error: error.message,
         final_image: job.draft_image,
+        selected_output: "first",
         timing,
       });
       const metrics = await appendTimingSample(timing).catch(() => null);
@@ -7517,6 +7606,7 @@ function validateRequest(body) {
   if (missing.length) throw new Error(`缺少必填字段：${missing.join(", ")}`);
   if (!SIZE_MAP[body.image_size]) throw new Error("输出尺寸必须是 16:9、9:16、3:4、4:3、1:1 之一");
   const stylePreset = resolveStylePresetId(body.style_preset);
+  const autoOptimize = booleanPreference(body.auto_optimize, true);
   return {
     campaign_name: textOf(body.campaign_name).trim(),
     campaign_subtitle: textOf(body.campaign_subtitle).trim(),
@@ -7536,6 +7626,8 @@ function validateRequest(body) {
     doudou_ip: isDoudouEnabled(body),
     include_logo: booleanPreference(body.include_logo, false),
     include_search_overlay: booleanPreference(body.include_search_overlay, false),
+    auto_optimize: autoOptimize,
+    optimization_mode: normalizeOptimizationMode(body.optimization_mode, autoOptimize),
   };
 }
 

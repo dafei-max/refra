@@ -53,7 +53,7 @@ function ImageNode({ data, selected }) {
     : (data.finalObjectKey || data.objectKey);
   const actionData = { ...data, url: visibleUrl, objectKey: visibleObjectKey };
   const hasVersions = Boolean(data.finalUrl && data.finalUrl !== data.draftUrl);
-  const versionLabel = data.optimizationStatus
+  const versionLabel = data.optimizationStatus && data.optimizationStatus !== "skipped_fast_mode"
     ? (showingDraft ? "初稿" : "优化版")
     : (data.label || "图片");
   const toggleVersion = (event) => {
@@ -368,7 +368,7 @@ function CanvasApp() {
               url: image.url,
               name: image.name || "",
               displayVersion: "final",
-              optimizationStatus: "completed",
+              optimizationStatus: job?.optimization_status || "edited_selected",
               optimizationReason: job?.review_result?.max_problem || "",
             });
             appendMessage("assistant", "优化完成", {
@@ -391,6 +391,9 @@ function CanvasApp() {
         } else if (event === "optimization_complete") {
           const job = payload.job;
           const draftKey = job?.draft_image?.object_key;
+          if (job?.optimization_status === "edited_rejected") {
+            updateStatusMessage("精修候选未通过回归检查，已保留初稿");
+          }
           if (draftKey) updateOptimizationNode(draftKey, {
             optimizationStatus: job?.optimization_status || "completed",
             optimizationJobId: job?.id || "",
@@ -400,7 +403,7 @@ function CanvasApp() {
             finalObjectKey: job?.final_image?.object_key || job?.draft_image?.object_key || "",
             objectKey: job?.final_image?.object_key || job?.draft_image?.object_key || draftKey,
             url: job?.final_image?.url || job?.draft_image?.url || "",
-            displayVersion: job?.optimization_triggered ? "final" : "draft",
+            displayVersion: job?.selected_output === "second" ? "final" : "draft",
           });
         } else if (event === "complete") {
           return payload;
@@ -510,13 +513,14 @@ function CanvasApp() {
       const optimization = result?.optimization;
       const draftKey = optimization?.draft_image?.object_key || result?.image_result?.object_key;
       if (draftKey && optimization) {
+        const fastMode = optimization.mode === "fast";
         updateOptimizationNode(draftKey, {
           draftObjectKey: draftKey,
           draftUrl: optimization.draft_image?.url || result?.image_result?.url || "",
           finalUrl: optimization.final_image?.url || "",
           optimizationStatus: optimization.optimization_status || "pending",
           optimizationJobId: optimization.id || result.optimization_job_id || "",
-          displayVersion: "draft",
+          displayVersion: fastMode ? "final" : "draft",
           onRetry: (data) => optimizationHandlerRef.current(data.optimizationJobId, true),
         });
       }

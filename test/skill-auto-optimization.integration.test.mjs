@@ -29,9 +29,10 @@ async function sseComplete(response) {
 }
 
 test("完整模拟链路：标题层、初稿、评审和一次优化均可完成", { timeout: 30000 }, async (t) => {
-  const calls = { plans: 0, reviews: 0, imageEdits: 0, partialRequests: 0 };
+  const calls = { plans: 0, reviews: 0, selections: 0, imageEdits: 0, partialRequests: 0 };
   let reviewMode = "revise";
   let failOptimizationEdit = false;
+  let rejectOptimizedCandidate = false;
   const mockOpenAi = createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -39,7 +40,21 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
     if (req.url === "/v1/responses") {
       const body = JSON.parse(raw.toString("utf8"));
       const name = body.text?.format?.name;
-      const output = name === "skill_draft_review"
+      const output = name === "skill_optimized_selection"
+        ? rejectOptimizedCandidate
+          ? {
+            selected_output: "first",
+            target_problem_fixed: true,
+            regression_detected: true,
+            reason: "精修候选删除了用户授权的主标题与日期",
+          }
+          : {
+            selected_output: "second",
+            target_problem_fixed: true,
+            regression_detected: false,
+            reason: "目标遮挡关系已修复，授权文字与其他不变量保持稳定",
+          }
+        : name === "skill_draft_review"
         ? reviewMode === "pass"
           ? {
             needs_revision: false,
@@ -67,6 +82,7 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
             style_invariants: ["只迁移参考图设计语法"],
           };
       if (name === "skill_draft_review") calls.reviews += 1;
+      else if (name === "skill_optimized_selection") calls.selections += 1;
       else calls.plans += 1;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ output_text: JSON.stringify(output) }));
@@ -149,6 +165,30 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
     });
     return { created, first, optimized: await sseComplete(optimize), jobId };
   }
+  async function runFastScenario(suffix) {
+    const created = await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ title: `Fast Skill Test ${suffix}` }),
+    }).then((response) => response.json());
+    const run = await fetch(`${base}/api/run-stream`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        project_id: created.id,
+        campaign_name: `快速生成 ${suffix}`,
+        campaign_subtitle: "只生成一次",
+        campaign_time: "8.26",
+        visual_description: "蓝色饮料瓶作为唯一主体",
+        image_size: "3:4",
+        style_preset: "three_d_style_v1",
+        generate_image: true,
+        optimization_mode: "fast",
+        auto_optimize: false,
+      }),
+    });
+    return { created, first: await sseComplete(run) };
+  }
   const projectResponse = await fetch(`${base}/api/projects`, { method: "POST", headers, body: JSON.stringify({ title: "Skill Test" }) });
   assert.equal(projectResponse.status, 200, stderr);
   const project = await projectResponse.json();
@@ -182,11 +222,13 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
   });
   const optimized = await sseComplete(optimizationResponse);
   assert.ok(optimized.events.some((event) => event.type === "optimized_image"), stderr);
-  assert.equal(optimized.complete.job.optimization_status, "completed");
+  assert.equal(optimized.complete.job.optimization_status, "edited_selected");
+  assert.equal(optimized.complete.job.selected_output, "second");
   assert.equal(optimized.complete.job.optimization_triggered, true);
   assert.equal(calls.plans, 1);
   assert.equal(calls.reviews, 1);
   assert.equal(calls.imageEdits, 3, "标题版式、完整 KV 初稿、定向优化各调用一次");
+  assert.equal(calls.selections, 1, "精修后必须执行一次初稿/精修版择优");
   assert.equal(calls.partialRequests, 1, "只有完整 KV 初稿请求 partial_images=1");
 
   const loadedJob = await fetch(`${base}/api/generation-jobs/${encodeURIComponent(jobId)}`).then((response) => response.json());
@@ -214,6 +256,31 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
   assert.equal(passed.optimized.complete.job.optimization_triggered, false);
   assert.equal(passed.optimized.events.some((event) => event.type === "optimized_image"), false);
   assert.equal(calls.imageEdits - passEditCount, 2, "评审合格时只支付标题层和完整 KV 初稿两次图片费用");
+
+  const fastEditCount = calls.imageEdits;
+  const fastReviewCount = calls.reviews;
+  const fastSelectionCount = calls.selections;
+  const fast = await runFastScenario("mode");
+  assert.equal(fast.first.complete.optimization.mode, "fast");
+  assert.equal(fast.first.complete.optimization.status, "completed");
+  assert.equal(fast.first.complete.optimization.optimization_status, "skipped_fast_mode");
+  assert.equal(fast.first.complete.optimization.selected_output, "first");
+  assert.equal(calls.imageEdits - fastEditCount, 2, "快速生成只执行标题层和完整 KV，不生成优化版");
+  assert.equal(calls.reviews, fastReviewCount, "快速生成不得调用自动评审");
+  assert.equal(calls.selections, fastSelectionCount, "快速生成不得调用两版择优");
+
+  reviewMode = "revise";
+  rejectOptimizedCandidate = true;
+  const rejected = await runSmartScenario("regression");
+  assert.equal(rejected.optimized.complete.job.optimization_status, "edited_rejected");
+  assert.equal(rejected.optimized.complete.job.selected_output, "first");
+  assert.equal(
+    rejected.optimized.complete.job.final_image.object_key,
+    rejected.optimized.complete.job.draft_image.object_key,
+    "精修删除授权文案时必须回退初稿",
+  );
+  assert.equal(rejected.optimized.events.some((event) => event.type === "optimized_image"), false);
+  rejectOptimizedCandidate = false;
 
   reviewMode = "revise";
   failOptimizationEdit = true;

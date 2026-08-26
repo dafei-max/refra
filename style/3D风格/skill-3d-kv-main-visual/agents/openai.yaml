@@ -1,8 +1,8 @@
 interface:
   display_name: KV 主视觉设计
-  short_description: 自动匹配3D材质与风格参考，设计关系优先的营销KV主视觉
-  default_prompt: Use $design-kv-main-visual to select the best 3D material and style
-    reference, design the KV relationship, and generate the main visual.
+  short_description: 统筹形色字构质与信息层级，自动审核并精修完整营销KV海报
+  default_prompt: Use $3d to design a complete KV poster, review the first result
+    automatically, and make at most one targeted refinement if needed.
   icon_small: assets/icon.svg
   icon_large: assets/icon.svg
 policy:
