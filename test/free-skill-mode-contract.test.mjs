@@ -31,16 +31,15 @@ test("自由模式是默认状态且与技能 UI 隔离", async () => {
   assert.match(canvas, /className="cf-composer-brief"/);
 });
 
-test("自由生成根据图片数量直达 GPT Image 2 且不进入 Skill 链", () => {
+test("自由生成通过 GPT 对话编排调用一次图片工具且不进入 Skill 链", () => {
   assert.match(server, /if \(request\.style_preset === NO_PRESET_ID\) \{\s*return runFreeGenerationPipeline/);
-  assert.match(server, /uploaded\.length === 0[\s\S]*?generateImageFile/);
-  assert.match(server, /else \{[\s\S]*?generateImageEditFile\(\{/);
+  assert.match(server, /generateChatOrchestratedImage\(\{/);
   assert.match(server, /OPENAI_BASE_URL = \(process\.env\.OPENAI_BASE_URL \|\| "https:\/\/api\.openai\.com\/v1"\)/);
-  assert.match(server, /`\$\{OPENAI_BASE_URL\}\/images\/generations`/);
-  assert.match(server, /`\$\{OPENAI_BASE_URL\}\/images\/edits`/);
-  assert.match(server, /final_prompt: prompt/);
-  assert.match(server, /text_rewrite: false/);
-  assert.match(server, /models: \{ text: null, image: IMAGE_MODEL \}/);
+  assert.match(server, /`\$\{OPENAI_BASE_URL\}\/responses`/);
+  assert.match(server, /final_prompt: generated\.revised_prompt \|\| prompt/);
+  assert.match(server, /automatic_prompt_revision: true/);
+  assert.match(server, /models: \{ text: SKILL_TEXT_MODEL, image: IMAGE_MODEL \}/);
+  assert.doesNotMatch(server, /自由模式：正在按上传顺序使用/);
 });
 
 test("技能参考图不再把无用途 @ 提及默认为主体", () => {

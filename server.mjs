@@ -42,6 +42,10 @@ import {
   styleFingerprintCacheKey,
   summarizeTimingSamples,
 } from "./services/skill-optimization.mjs";
+import {
+  buildFreeImageResponsesRequest,
+  extractFreeImageResponse,
+} from "./services/free-image-orchestrator.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -6576,6 +6580,47 @@ async function generateImageEditFile({
   });
 }
 
+async function generateChatOrchestratedImage({ prompt, selected = [], size, prefix = "kv-free-chat" }) {
+  if (!OPENAI_API_KEY) {
+    return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
+  }
+  const images = selected.length ? await fetchImageBytes(selected) : [];
+  const requestBody = buildFreeImageResponsesRequest({
+    prompt,
+    images,
+    labels: selected.map((item, index) => item.label || `图${index + 1}`),
+    size: size || "1024x1024",
+    model: SKILL_TEXT_MODEL,
+    imageModel: IMAGE_MODEL,
+  });
+  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error?.message || `OpenAI Responses 图片生成请求失败：${response.status}`);
+  }
+  const generated = extractFreeImageResponse(payload);
+  const saved = await saveGeneratedImageFile({
+    b64: generated.b64,
+    prompt: generated.revisedPrompt || prompt,
+    size: size || "1024x1024",
+    prefix,
+    referenceImages: selected.map((item) => item.number),
+  });
+  return {
+    ...saved,
+    revised_prompt: generated.revisedPrompt,
+    response_id: generated.responseId,
+    image_call_id: generated.imageCallId,
+  };
+}
+
 async function makeTitleTransparent(sourcePath) {
   const ext = path.extname(sourcePath) || ".png";
   const targetPath = sourcePath.replace(new RegExp(`${ext.replace(".", "\\.")}$`), `-transparent${ext}`);
@@ -7171,22 +7216,16 @@ async function runCanvasEditPipeline(request, onStage, pipelineStartedAt) {
 async function runFreeGenerationPipeline(request, onStage, pipelineStartedAt) {
   const prompt = request.visual_description;
   const uploaded = request.uploaded_references || [];
-  const mode = uploaded.length ? "free-image-edit" : "free-text-to-image";
+  const mode = uploaded.length ? "free-chat-image-edit" : "free-chat-text-to-image";
   onStage("status", {
     message: uploaded.length
-      ? `自由模式：正在按上传顺序使用 ${uploaded.length} 张参考图生成...`
-      : "自由模式：正在根据原始描述生成图片...",
+      ? `自由模式：GPT 正在理解 ${uploaded.length} 张参考图并生成...`
+      : "自由模式：GPT 正在理解描述并生成图片...",
   });
   onStage("prompt", { final_prompt: prompt, source: "user-original" });
   let generated;
   if (!request.generate_image) {
     generated = { skipped: true, reason: "未勾选生成图片。" };
-  } else if (uploaded.length === 0) {
-    generated = await generateImageFile({
-      prompt,
-      size: SIZE_MAP[request.image_size] || "1024x1024",
-      prefix: "kv-free-generate",
-    });
   } else {
     const selected = uploaded.map((url, index) => ({
       type: "用户上传",
@@ -7198,14 +7237,13 @@ async function runFreeGenerationPipeline(request, onStage, pipelineStartedAt) {
       local_image: url,
       image_url: "",
       object_key: objectKeyFromUrl(url),
-      description: "按用户原始 Prompt 中的 @图N 指令使用，未指定用途时不擅自改写用途。",
+      description: "按用户原始 Prompt 中的 @图N 指令使用；由 GPT 结合图片内容理解用途，未指定时不得默认混合人物或产品身份。",
     }));
-    generated = await generateImageEditFile({
+    generated = await generateChatOrchestratedImage({
       prompt,
       selected,
       size: SIZE_MAP[request.image_size] || "1024x1024",
-      prefix: "kv-free-edit",
-      applyOverlay: false,
+      prefix: uploaded.length ? "kv-free-chat-edit" : "kv-free-chat-generate",
     });
   }
   const imageResult = generated.skipped
@@ -7215,17 +7253,24 @@ async function runFreeGenerationPipeline(request, onStage, pipelineStartedAt) {
   onStage("image", { image_result: imageResult });
   const result = {
     request,
-    final_prompt: prompt,
+    user_prompt: prompt,
+    final_prompt: generated.revised_prompt || prompt,
     image_result: imageResult,
     quality_review: { source: "free-mode", decision: "deferred" },
     warnings: [],
-    models: { text: null, image: IMAGE_MODEL },
+    models: { text: SKILL_TEXT_MODEL, image: IMAGE_MODEL },
     performance: {
       mode,
       target_ms: 180000,
       total_ms: Date.now() - pipelineStartedAt,
       stages: {},
-      llm_policy: { prompt: "user-original", text_rewrite: false, image_route: uploaded.length ? "edit" : "generate" },
+      llm_policy: {
+        prompt: "responses-image-generation-tool",
+        user_prompt_preserved: true,
+        automatic_prompt_revision: true,
+        image_route: uploaded.length ? "edit" : "generate",
+        auto_revision_rounds: 0,
+      },
     },
   };
   if (!imageResult.skipped) {
