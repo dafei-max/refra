@@ -29,7 +29,7 @@ async function sseComplete(response) {
 }
 
 test("完整模拟链路：标题层、初稿、评审和一次优化均可完成", { timeout: 30000 }, async (t) => {
-  const calls = { plans: 0, reviews: 0, selections: 0, imageEdits: 0, partialRequests: 0, textAuth: [], imageAuth: [], imageSizes: [] };
+  const calls = { plans: 0, reviews: 0, selections: 0, imageEdits: 0, partialRequests: 0 };
   let reviewMode = "revise";
   let failOptimizationEdit = false;
   let rejectOptimizedCandidate = false;
@@ -38,7 +38,6 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
     for await (const chunk of req) chunks.push(chunk);
     const raw = Buffer.concat(chunks);
     if (req.url === "/v1/responses") {
-      calls.textAuth.push(req.headers.authorization || "");
       const body = JSON.parse(raw.toString("utf8"));
       const name = body.text?.format?.name;
       const output = name === "skill_optimized_selection"
@@ -90,9 +89,6 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
       return;
     }
     if (req.url === "/v1/images/edits") {
-      calls.imageAuth.push(req.headers.authorization || "");
-      const sizeMatch = raw.toString("latin1").match(/name="size"\r\n\r\n([^\r]+)/);
-      if (sizeMatch) calls.imageSizes.push(sizeMatch[1]);
       calls.imageEdits += 1;
       if (raw.includes(Buffer.from('name="partial_images"'))) calls.partialRequests += 1;
       if (failOptimizationEdit && raw.includes(Buffer.from("Image 1 is the edit target."))) {
@@ -121,8 +117,7 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
       TMPDIR: isolatedTmp,
       STORAGE_BACKEND: "fs",
       ADMIN_TOKEN: "test-token",
-      OPENAI_API_KEY: "text-test-key",
-      OPENAI_IMAGE_API_KEY: "image-test-key",
+      OPENAI_API_KEY: "test-key",
       OPENAI_BASE_URL: `http://127.0.0.1:${mockPort}/v1`,
       PIPELINE_MODE: "fast",
       RATE_LIMIT_RUN_PER_MIN: "20",
@@ -235,9 +230,6 @@ test("完整模拟链路：标题层、初稿、评审和一次优化均可完�
   assert.equal(calls.imageEdits, 3, "标题版式、完整 KV 初稿、定向优化各调用一次");
   assert.equal(calls.selections, 1, "精修后必须执行一次初稿/精修版择优");
   assert.equal(calls.partialRequests, 1, "只有完整 KV 初稿请求 partial_images=1");
-  assert.ok(calls.textAuth.every((value) => value === "Bearer text-test-key"), "文本模型必须继续使用独立文本 key");
-  assert.ok(calls.imageAuth.every((value) => value === "Bearer image-test-key"), "图片模型必须使用独立图片 key");
-  assert.ok(calls.imageSizes.every((value) => value === "1024x1536"), "3:4 请求必须映射到网关支持的竖版尺寸");
 
   const loadedJob = await fetch(`${base}/api/generation-jobs/${encodeURIComponent(jobId)}`).then((response) => response.json());
   assert.ok(loadedJob.draft_image?.object_key);

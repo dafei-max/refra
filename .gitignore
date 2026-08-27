@@ -15,8 +15,8 @@ uploads/references/*
 archives/
 release-bundles/
 vision.cjs
+.vercel/
 
 # Review / speech materials are not runtime resources.
 case/
 汇报材料/
-.vercel/

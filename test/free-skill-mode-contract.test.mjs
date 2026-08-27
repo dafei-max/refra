@@ -35,11 +35,9 @@ test("自由生成根据图片数量直达 GPT Image 2 且不进入 Skill 链", 
   assert.match(server, /if \(request\.style_preset === NO_PRESET_ID\) \{\s*return runFreeGenerationPipeline/);
   assert.match(server, /uploaded\.length === 0[\s\S]*?generateImageFile/);
   assert.match(server, /else \{[\s\S]*?generateImageEditFile\(\{/);
-  assert.match(server, /OPENAI_IMAGE_API_KEY = process\.env\.OPENAI_IMAGE_API_KEY \|\| OPENAI_API_KEY/);
-  assert.match(server, /OPENAI_IMAGE_BASE_URL = normalizeOpenAiBaseUrl\(process\.env\.OPENAI_IMAGE_BASE_URL, OPENAI_BASE_URL\)/);
-  assert.match(server, /OPENAI_IMAGE_EDIT_BASE_URL = normalizeOpenAiBaseUrl\(process\.env\.OPENAI_IMAGE_EDIT_BASE_URL, OPENAI_IMAGE_BASE_URL\)/);
-  assert.match(server, /`\$\{OPENAI_IMAGE_BASE_URL\}\/images\/generations`/);
-  assert.match(server, /`\$\{OPENAI_IMAGE_EDIT_BASE_URL\}\/images\/edits`/);
+  assert.match(server, /OPENAI_BASE_URL = \(process\.env\.OPENAI_BASE_URL \|\| "https:\/\/api\.openai\.com\/v1"\)/);
+  assert.match(server, /`\$\{OPENAI_BASE_URL\}\/images\/generations`/);
+  assert.match(server, /`\$\{OPENAI_BASE_URL\}\/images\/edits`/);
   assert.match(server, /final_prompt: prompt/);
   assert.match(server, /text_rewrite: false/);
   assert.match(server, /models: \{ text: null, image: IMAGE_MODEL \}/);
