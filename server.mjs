@@ -42,6 +42,13 @@ import {
   styleFingerprintCacheKey,
   summarizeTimingSamples,
 } from "./services/skill-optimization.mjs";
+import {
+  coreImageGenerationBody,
+  isByteDanceModelHub,
+  normalizeImageApiSize,
+  normalizeOpenAiBaseUrl,
+  openAiHeaders,
+} from "./services/openai-gateway.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,7 +57,10 @@ const DESIGN_PROMPT_URL = new URL("./设计判断.md", import.meta.url);
 
 const PORT = Number(process.env.PORT || 5173);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+const OPENAI_BASE_URL = normalizeOpenAiBaseUrl(process.env.OPENAI_BASE_URL);
+const OPENAI_IMAGE_API_KEY = process.env.OPENAI_IMAGE_API_KEY || OPENAI_API_KEY;
+const OPENAI_IMAGE_BASE_URL = normalizeOpenAiBaseUrl(process.env.OPENAI_IMAGE_BASE_URL, OPENAI_BASE_URL);
+const OPENAI_IMAGE_EDIT_BASE_URL = normalizeOpenAiBaseUrl(process.env.OPENAI_IMAGE_EDIT_BASE_URL, OPENAI_IMAGE_BASE_URL);
 const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-5";
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 const SKILL_TEXT_MODEL = process.env.OPENAI_SKILL_MODEL || "gpt-5.5";
@@ -139,10 +149,10 @@ const INTEGRATED_LAYOUT_DECORATIVE_COPY_RULE = "文字内容采用用户输入�
 const INTEGRATED_LAYOUT_DECORATION_RULE = `${INTEGRATED_LAYOUT_DECORATION_STRUCTURE_RULE}；${INTEGRATED_LAYOUT_DECORATIVE_COPY_RULE}`;
 
 const SIZE_MAP = {
-  "16:9": "1536x864",
-  "9:16": "864x1536",
-  "3:4": "960x1280",
-  "4:3": "1280x960",
+  "16:9": "1536x1024",
+  "9:16": "1024x1536",
+  "3:4": "1024x1536",
+  "4:3": "1536x1024",
   "1:1": "1024x1024",
 };
 
@@ -3086,7 +3096,7 @@ async function runSkillOptimization(jobId, onStage = () => {}, { retry = false }
           hasDesignReference: Boolean(styleReference),
         }),
         selected: [draftReference, typographyReference, styleReference].filter(Boolean),
-        size: job.draft_image?.size || SIZE_MAP[job.request?.image_size] || "768x1024",
+        size: job.draft_image?.size || SIZE_MAP[job.request?.image_size] || "1024x1536",
         prefix: "kv-skill-optimized",
         quality: "medium",
         applyOverlay: true,
@@ -6469,37 +6479,65 @@ async function readImageStream(response, onPartial = null) {
   return lastImage;
 }
 
-async function generateImageFile({ prompt, size, prefix = "kv-free", quality = "medium", partialImages = 0, onPartial = null }) {
-  if (!OPENAI_API_KEY) {
-    return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
+function imageApiLogId(operation) {
+  return `refra-${operation}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+}
+
+async function decodeImageApiResponse(response, onPartial = null) {
+  if (response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
+    return { b64: await readImageStream(response, onPartial), payload: {} };
   }
+  const payload = await response.json().catch(() => ({}));
+  return { b64: payload.data?.[0]?.b64_json || "", payload };
+}
+
+function imageApiError(response, payload, logId) {
+  const detail = payload.error?.message || `OpenAI Images API 请求失败：${response.status}`;
+  const upstreamLogId = response.headers.get("x-tt-logid") || logId;
+  return new Error(upstreamLogId ? `${detail}（请求标识：${upstreamLogId}）` : detail);
+}
+
+async function generateImageFile({ prompt, size, prefix = "kv-free", quality = "medium", partialImages = 0, onPartial = null }) {
+  if (!OPENAI_IMAGE_API_KEY) {
+    return { skipped: true, reason: "缺少 OPENAI_IMAGE_API_KEY，无法调用图片模型。" };
+  }
+  const requestSize = normalizeImageApiSize(size);
+  const coreBody = coreImageGenerationBody({ model: IMAGE_MODEL, prompt, size: requestSize, quality });
   const requestBody = {
-    model: IMAGE_MODEL,
-    prompt,
-    size: size || "1024x1024",
-    quality,
+    ...coreBody,
     output_format: "png",
     ...(partialImages > 0 ? { stream: true, partial_images: Math.min(3, partialImages) } : {}),
   };
-  const response = await fetch(`${OPENAI_BASE_URL}/images/generations`, {
+  const logId = imageApiLogId("generate");
+  let response = await fetch(`${OPENAI_IMAGE_BASE_URL}/images/generations`, {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: openAiHeaders({
+      apiKey: OPENAI_IMAGE_API_KEY,
+      baseUrl: OPENAI_IMAGE_BASE_URL,
+      contentType: "application/json",
+      logId,
+    }),
     body: JSON.stringify(requestBody),
   });
-  let b64 = "";
-  let payload = {};
-  if (partialImages > 0 && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
-    b64 = await readImageStream(response, onPartial);
-  } else {
-    payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error?.message || `OpenAI Images API 请求失败：${response.status}`);
-    b64 = payload.data?.[0]?.b64_json;
+  let decoded = await decodeImageApiResponse(response, onPartial);
+  if (!response.ok && response.status === 400 && isByteDanceModelHub(OPENAI_IMAGE_BASE_URL)) {
+    // ModelHub documents the core OpenAI-compatible fields but may reject
+    // output_format/stream/partial_images. Retry once without optional fields.
+    response = await fetch(`${OPENAI_IMAGE_BASE_URL}/images/generations`, {
+      method: "POST",
+      headers: openAiHeaders({
+        apiKey: OPENAI_IMAGE_API_KEY,
+        baseUrl: OPENAI_IMAGE_BASE_URL,
+        contentType: "application/json",
+        logId,
+      }),
+      body: JSON.stringify(coreBody),
+    });
+    decoded = await decodeImageApiResponse(response, onPartial);
   }
-  if (!b64) throw new Error("Images API 没有返回 b64_json");
-  return saveGeneratedImageFile({ b64, prompt, size, prefix });
+  if (!response.ok) throw imageApiError(response, decoded.payload, logId);
+  if (!decoded.b64) throw new Error(`Images API 没有返回 b64_json（请求标识：${logId}）`);
+  return saveGeneratedImageFile({ b64: decoded.b64, prompt, size: requestSize, prefix });
 }
 
 async function generateImageEditFile({
@@ -6514,21 +6552,23 @@ async function generateImageEditFile({
   partialImages = 0,
   onPartial = null,
 }) {
-  if (!OPENAI_API_KEY) {
-    return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
+  if (!OPENAI_IMAGE_API_KEY) {
+    return { skipped: true, reason: "缺少 OPENAI_IMAGE_API_KEY，无法调用图片模型。" };
   }
   if (!selected.length) {
     return { skipped: true, reason: "缺少参考图，无法进行图生图。" };
   }
 
   const images = await fetchImageBytes(selected);
-  const buildForm = (withStreaming) => {
+  const requestSize = normalizeImageApiSize(size);
+  const buildForm = (withStreaming, coreOnly = false) => {
     const form = new FormData();
     form.append("model", IMAGE_MODEL);
     form.append("prompt", prompt);
-    form.append("size", size || "1024x1024");
+    form.append("size", requestSize);
     form.append("quality", quality);
-    form.append("output_format", "png");
+    form.append("n", "1");
+    if (!coreOnly) form.append("output_format", "png");
     if (withStreaming) {
       form.append("stream", "true");
       form.append("partial_images", String(Math.min(3, partialImages)));
@@ -6539,35 +6579,29 @@ async function generateImageEditFile({
     return form;
   };
 
+  const logId = imageApiLogId("edit");
   let form = buildForm(partialImages > 0);
-  let response = await fetch(`${OPENAI_BASE_URL}/images/edits`, {
+  let response = await fetch(`${OPENAI_IMAGE_EDIT_BASE_URL}/images/edits`, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
+    headers: openAiHeaders({ apiKey: OPENAI_IMAGE_API_KEY, baseUrl: OPENAI_IMAGE_EDIT_BASE_URL, logId }),
     body: form,
   });
-  let b64 = "";
-  let payload = {};
-  if (partialImages > 0 && response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
-    b64 = await readImageStream(response, onPartial);
-  } else {
-    payload = await response.json().catch(() => ({}));
-    if (!response.ok && partialImages > 0 && response.status === 400) {
-      form = buildForm(false);
-      response = await fetch(`${OPENAI_BASE_URL}/images/edits`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
-        body: form,
-      });
-      payload = await response.json().catch(() => ({}));
-    }
-    if (!response.ok) throw new Error(payload.error?.message || `OpenAI Images API 请求失败：${response.status}`);
-    b64 = payload.data?.[0]?.b64_json;
+  let decoded = await decodeImageApiResponse(response, onPartial);
+  if (!response.ok && response.status === 400 && (partialImages > 0 || isByteDanceModelHub(OPENAI_IMAGE_EDIT_BASE_URL))) {
+    form = buildForm(false, isByteDanceModelHub(OPENAI_IMAGE_EDIT_BASE_URL));
+    response = await fetch(`${OPENAI_IMAGE_EDIT_BASE_URL}/images/edits`, {
+      method: "POST",
+      headers: openAiHeaders({ apiKey: OPENAI_IMAGE_API_KEY, baseUrl: OPENAI_IMAGE_EDIT_BASE_URL, logId }),
+      body: form,
+    });
+    decoded = await decodeImageApiResponse(response, onPartial);
   }
-  if (!b64) throw new Error("Images API 没有返回 b64_json");
+  if (!response.ok) throw imageApiError(response, decoded.payload, logId);
+  if (!decoded.b64) throw new Error(`Images API 没有返回 b64_json（请求标识：${logId}）`);
   return saveGeneratedImageFile({
-    b64,
+    b64: decoded.b64,
     prompt,
-    size,
+    size: requestSize,
     prefix,
     referenceImages: selected.map((item) => item.number),
     applyOverlay,
@@ -6913,8 +6947,8 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
 }
 
 async function generateImage(request, prompt, selected, options = {}) {
-  if (!OPENAI_API_KEY) {
-    return { skipped: true, reason: "缺少 OPENAI_API_KEY，已跳过最终生图。" };
+  if (!OPENAI_IMAGE_API_KEY) {
+    return { skipped: true, reason: "缺少 OPENAI_IMAGE_API_KEY，已跳过最终生图。" };
   }
   if (!selected.length) {
     return { skipped: true, reason: "当前未使用预设且未上传参考图，已跳过图生图；请选择一个风格预设或上传参考图后再生成 KV 图。" };
@@ -7033,7 +7067,7 @@ async function splitAssetLayers({ name, title, subtitle, time }) {
         : null,
     };
   }
-  if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
+  if (!OPENAI_IMAGE_API_KEY) throw new Error("缺少 OPENAI_IMAGE_API_KEY，无法调用图片模型");
 
   let sourcePath = source.filePath || "";
   const tempFiles = [];
@@ -7474,7 +7508,7 @@ async function runPipeline(request, onStage = () => {}) {
     ? await measure("image_generation", () => generateLayeredImage(request, design, promptReferences, onStage, "", {
         skillPlan,
         quality: "low",
-        size: request.image_size === "3:4" ? "768x1024" : (SIZE_MAP[request.image_size] || "1024x1024"),
+        size: SIZE_MAP[request.image_size] || "1024x1024",
         partialImages: 1,
         onPartial: async (b64) => {
           onStage("image_preview", { image_preview: { url: `data:image/png;base64,${b64}`, temporary: true } });
@@ -7704,7 +7738,12 @@ const server = createServer(async (req, res) => {
       const materials = await loadMaterials();
       jsonResponse(res, 200, {
         ok: true,
-        has_api_key: Boolean(OPENAI_API_KEY),
+        has_api_key: Boolean(OPENAI_API_KEY && OPENAI_IMAGE_API_KEY),
+        has_text_api_key: Boolean(OPENAI_API_KEY),
+        has_image_api_key: Boolean(OPENAI_IMAGE_API_KEY),
+        image_provider: isByteDanceModelHub(OPENAI_IMAGE_BASE_URL) || isByteDanceModelHub(OPENAI_IMAGE_EDIT_BASE_URL)
+          ? "bytedance-modelhub"
+          : "openai-compatible",
         models: { text: TEXT_MODEL, skill: SKILL_TEXT_MODEL, image: IMAGE_MODEL },
         capabilities: {
           brand_overlay_engine: "pngjs+resvg-wasm",

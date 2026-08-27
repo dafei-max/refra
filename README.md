@@ -195,7 +195,7 @@ PIPELINE_MODE=quality node server.mjs
 
 - `快速生成`：完整 KV 使用 `gpt-image-2` 的 `low` quality，不评审、不自动编辑。
 - `智能优化`：初稿先返回；GPT-5.5 以低细节图片和低推理强度只判断一个最大结构问题。严重度达到阈值时，最多调用一次 `images.edit`，第一张输入固定为初稿编辑目标，第二张固定为 `reference-library` 设计语法参考。
-- 3:4 技能初稿默认使用 `768x1024`；其他画幅沿用现有尺寸映射。
+- 图片网关统一使用 `1024x1024`、`1536x1024`、`1024x1536` 三种标准尺寸；产品画幅会映射到最接近的横版、竖版或方图尺寸。
 - Skill 版本与参考图内容哈希组成风格指纹缓存键，缓存写入 `data/skill-fingerprints.json`。
 - 任务写入 `data/generation-jobs/<id>.json`，耗时样本和 P50/P95 写入 `data/generation-metrics.json`。OSS 后端只持久化 object key，对外读取时再生成签名 URL。
 - `GET /api/generation-jobs/:id` 读取任务；`POST /api/generation-jobs/:id/optimize-stream` 启动或重试一次优化；`GET /api/generation-metrics` 读取阶段耗时统计。
@@ -208,6 +208,10 @@ SKILL_REVISION_THRESHOLD=0.65
 SKILL_PLANNING_REASONING_EFFORT=low
 SKILL_REVIEW_REASONING_EFFORT=low
 OPENAI_BASE_URL=https://api.openai.com/v1
+# 可为图片模型单独配置 OpenAI-compatible 网关；文本模型仍使用上面的 OPENAI_API_KEY / OPENAI_BASE_URL。
+OPENAI_IMAGE_API_KEY=your-image-gateway-ak
+OPENAI_IMAGE_BASE_URL=https://aidp.bytedance.net/api/modelhub/online/v2/crawl/openai
+OPENAI_IMAGE_EDIT_BASE_URL=https://aidp.bytedance.net/gpt/openapi/online/v2/crawl/openai
 ```
 
 生成记录会同时保存初稿与最终图 object key、Skill ID/版本、生成 Prompt、评审结果、是否触发优化、优化状态、错误和阶段耗时。优化失败时任务以初稿作为可用最终结果，保留错误并允许用户点击“重新优化”；自动尝试本身不会超过一次。

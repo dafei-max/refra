@@ -19,3 +19,4 @@ vision.cjs
 # Review / speech materials are not runtime resources.
 case/
 汇报材料/
+.vercel/
