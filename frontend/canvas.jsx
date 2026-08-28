@@ -43,6 +43,52 @@ function canvasAspectRatio(value = "3:4") {
   return width > 0 && height > 0 ? `${width} / ${height}` : "3 / 4";
 }
 
+function ResilientImage({ src, alt = "", aspectRatio = "", className = "" }) {
+  const [attempt, setAttempt] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const retryTimerRef = useRef(null);
+  const maxAttempts = 6;
+
+  useEffect(() => {
+    setAttempt(0);
+    setLoaded(false);
+    return () => clearTimeout(retryTimerRef.current);
+  }, [src]);
+
+  const retry = useCallback(() => {
+    clearTimeout(retryTimerRef.current);
+    setLoaded(false);
+    setAttempt((value) => value + 1);
+  }, []);
+
+  const handleError = useCallback(() => {
+    setLoaded(false);
+    if (attempt >= maxAttempts) return;
+    const delay = Math.min(30_000, 1_000 * (2 ** attempt));
+    clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = setTimeout(retry, delay);
+  }, [attempt, retry]);
+
+  return (
+    <span
+      className={`cf-image-loader${loaded ? " is-loaded" : " is-loading"}${attempt >= maxAttempts ? " is-delayed" : ""} ${className}`.trim()}
+      style={aspectRatio ? { aspectRatio } : undefined}
+    >
+      <img
+        key={`${src}-${attempt}`}
+        src={src}
+        alt=""
+        aria-label={alt || "生成图片"}
+        onLoad={() => setLoaded(true)}
+        onError={handleError}
+      />
+      {!loaded && attempt >= maxAttempts ? (
+        <button type="button" className="cf-image-retry" onClick={retry}>图片加载较慢，点击重试</button>
+      ) : null}
+    </span>
+  );
+}
+
 function ImageNode({ data, selected }) {
   const [splitting, setSplitting] = useState(false);
   const [branding, setBranding] = useState(false);
@@ -79,7 +125,7 @@ function ImageNode({ data, selected }) {
         <img src="/ui-assets/icon/image.svg" alt="" />
         <span>{versionLabel}</span>
       </button>
-      <img src={visibleUrl} alt={data.name || ""} />
+      <ResilientImage src={visibleUrl} alt={data.name || ""} aspectRatio={data.aspectRatio || "3 / 4"} />
       {selected && (
         <div className="cf-node-toolbar">
           <button type="button" onClick={(event) => { event.stopPropagation(); window.open(visibleUrl, "_blank"); }}>
@@ -353,6 +399,8 @@ function CanvasApp() {
           const image = payload.image_result;
           if (image && !image.skipped && image.url) {
             appendMessage("assistant", "", { image: image.url, imageObjectKey: image.object_key || "", imageName: image.name });
+            setLoadingNode(null);
+            updateStatusMessage("图片已生成，正在保存到项目...");
           }
         } else if (event === "optimized_image") {
           const image = payload.image_result;
@@ -527,6 +575,8 @@ function CanvasApp() {
       if (optimization?.mode === "smart" && optimization?.status === "draft_ready") {
         updateStatusMessage("初稿已完成，正在检查画面结构");
         void runOptimization(optimization.id || result.optimization_job_id);
+      } else if (result?.warnings?.some((warning) => ["asset-persist", "project-append"].includes(warning?.stage))) {
+        updateStatusMessage("图片已生成；历史记录暂时保存失败，画布将继续自动保存");
       } else {
         updateStatusMessage("生成完成");
       }
@@ -1047,7 +1097,7 @@ function CanvasApp() {
                     <span>{generating ? "生成中" : "重新生成"}</span>
                   </button>
                 ) : null}
-                {message.image ? <div className="cf-msg cf-msg-image"><img src={message.image} alt={message.imageName || ""} /></div> : null}
+                {message.image ? <div className="cf-msg cf-msg-image"><ResilientImage src={message.image} alt={message.imageName || ""} /></div> : null}
               </div>
             ))}
           </div>

@@ -48,6 +48,7 @@ import {
   extractFreeImageResponse,
 } from "./services/free-image-orchestrator.mjs";
 import { generateRightApiImage } from "./services/rightapi-image-provider.mjs";
+import { assetObjectKey, compactAssetIndex } from "./services/asset-index.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1265,9 +1266,7 @@ function applyRateLimit(req, res, limit, windowMs = 60000) {
 }
 
 function objectKeyFromUrl(value) {
-  const raw = textOf(value).trim();
-  if (!raw) return "";
-  return raw.startsWith("/") ? raw.slice(1) : raw;
+  return assetObjectKey(value);
 }
 
 function decorateUploadUrls(value) {
@@ -2271,7 +2270,7 @@ function normalizeAssetIndexRecord(raw) {
 async function loadAssetsIndex() {
   try {
     const payload = JSON.parse((await storageGet("data/assets.json")).toString("utf-8"));
-    const list = Array.isArray(payload?.assets) ? payload.assets : [];
+    const list = compactAssetIndex(Array.isArray(payload?.assets) ? payload.assets : []);
     const seen = new Set();
     const result = [];
     for (const raw of list) {
@@ -2295,9 +2294,10 @@ async function loadAssetsIndex() {
 }
 
 async function saveAssetsIndex(assets) {
-  const payload = JSON.stringify({ source: "asset-index", count: assets.length, assets }, null, 2);
+  const compactAssets = compactAssetIndex(assets);
+  const payload = JSON.stringify({ source: "asset-index", count: compactAssets.length, assets: compactAssets }, null, 2);
   await storagePut("data/assets.json", Buffer.from(payload, "utf-8"), { contentType: "application/json" });
-  return assets;
+  return compactAssets;
 }
 
 const PROJECTS_INDEX_KEY = "data/projects.json";
@@ -2914,6 +2914,24 @@ async function persistAssetRecord(result) {
   ));
   next.push(record);
   await saveAssetsIndex(next);
+}
+
+async function persistGeneratedResultBestEffort(result, projectId = "") {
+  const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+  try {
+    await persistAssetRecord(result);
+  } catch (error) {
+    warnings.push({ stage: "asset-persist", message: error.message || "资产索引保存失败" });
+  }
+  if (textOf(projectId).trim()) {
+    try {
+      await appendGenerationToProject(textOf(projectId).trim(), result);
+    } catch (error) {
+      warnings.push({ stage: "project-append", message: error.message || "项目画布保存失败" });
+    }
+  }
+  result.warnings = warnings;
+  return warnings;
 }
 
 function persistableReference(reference = {}) {
@@ -7302,8 +7320,8 @@ async function runCanvasEditPipeline(request, onStage, pipelineStartedAt) {
     },
   };
   if (!imageResult.skipped) {
-    await persistAssetRecord(result);
-    await appendGenerationToProject(request.project_id, result);
+    onStage("status", { message: "图片已生成，正在保存到项目..." });
+    await persistGeneratedResultBestEffort(result, request.project_id);
   }
   onStage("complete", result);
   return result;
@@ -7370,8 +7388,8 @@ async function runFreeGenerationPipeline(request, onStage, pipelineStartedAt) {
     },
   };
   if (!imageResult.skipped) {
-    await persistAssetRecord(result);
-    if (request.project_id) await appendGenerationToProject(request.project_id, result);
+    onStage("status", { message: "图片已生成，正在保存到项目..." });
+    await persistGeneratedResultBestEffort(result, request.project_id);
   }
   onStage("complete", result);
   return result;

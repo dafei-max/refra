@@ -4391,8 +4391,54 @@ body {
   box-shadow: none;
 }
 
-.canvas-page .cf-node > img {
+.canvas-page .cf-node > img,
+.canvas-page .cf-node > .cf-image-loader {
   border-radius: 12px;
+}
+
+.cf-image-loader {
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+  display: block;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #252525;
+}
+
+.cf-image-loader.is-loading {
+  background: linear-gradient(105deg, #252525 20%, #313131 46%, #383838 50%, #313131 54%, #252525 80%);
+  background-size: 240% 100%;
+  animation: imageLoadShimmer 1.6s ease-in-out infinite;
+}
+
+.cf-image-loader > img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  opacity: 0;
+}
+
+.cf-image-loader.is-loaded > img {
+  height: auto;
+  opacity: 1;
+}
+
+.cf-image-retry {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: rgba(30, 30, 30, 0.94);
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@keyframes imageLoadShimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
 }
 
 .cf-chat-head-actions {
@@ -4949,7 +4995,8 @@ body, button, input, textarea, select { font-family: "Douyin Number ABC", "PingF
   outline: 0;
 }
 
-.canvas-page .cf-node.selected > img {
+.canvas-page .cf-node.selected > img,
+.canvas-page .cf-node.selected > .cf-image-loader {
   outline: 2px solid #04CAE0;
   outline-offset: 0;
 }

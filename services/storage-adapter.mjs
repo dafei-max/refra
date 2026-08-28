@@ -15,7 +15,9 @@ import OSS from "ali-oss";
 // error instead of silently falling back to the ephemeral /tmp directory.
 
 const DEFAULT_SIGNED_URL_TTL = 3600;
-const DEFAULT_OSS_REQUEST_TIMEOUT_MS = 5000;
+// Cross-region writes can legitimately take longer than five seconds,
+// especially when an index object grows beyond a few hundred KB.
+const DEFAULT_OSS_REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_OSS_RETRY_MAX = 2;
 const DEFAULT_OSS_ACCELERATE_ENDPOINT = "oss-accelerate.aliyuncs.com";
 
