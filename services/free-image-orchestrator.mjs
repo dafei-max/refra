@@ -12,6 +12,10 @@ const FREE_IMAGE_SYSTEM_INSTRUCTIONS = `你是对话式图片生成编排器。�
 9. 多图合成时明确每张图贡献什么，并保持人物身份、产品身份、构图与风格职责互不覆盖。只生成一个候选结果。
 10. 画面中的可读文字仅使用用户明确提供的内容；不要新增品牌、Logo、价格、日期、口号、水印或乱码。`;
 
+const FREE_IMAGE_PLANNER_INSTRUCTIONS = `${FREE_IMAGE_SYSTEM_INSTRUCTIONS}
+
+当前图片服务与文本服务分离，因此不要调用工具。请把你的理解压缩为一份可直接交给图片模型执行的最终 Prompt：明确每张 Image 的职责、必须保留的身份与产品特征、用户要求的视觉媒介、构图和文字白名单。只输出最终 Prompt，不要解释、标题、Markdown 或备选方案。`;
+
 function cleanLabel(value, index) {
   const fallback = `图${index + 1}`;
   const label = String(value || fallback).trim().replace(/^@/, "");
@@ -26,17 +30,7 @@ function normalizeImageToolSize(size) {
   return width > height ? "1536x1024" : "1024x1536";
 }
 
-export function buildFreeImageResponsesRequest({
-  prompt,
-  images = [],
-  labels = [],
-  size = "1024x1024",
-  model = "gpt-5.5",
-  imageModel = "gpt-image-2",
-}) {
-  const originalPrompt = String(prompt || "").trim();
-  if (!originalPrompt) throw new Error("自由生图缺少用户原始描述");
-
+function buildUserContent(originalPrompt, images, labels) {
   const mapping = images.length
     ? images.map((_, index) => `Image ${index + 1} = @${cleanLabel(labels[index], index)}`).join("；")
     : "本次没有输入图片。";
@@ -48,7 +42,7 @@ export function buildFreeImageResponsesRequest({
         `用户原始请求：\n${originalPrompt}`,
         `参考图映射：${mapping}`,
         images.length
-          ? "请先在内部理解每张图被指定的职责，再调用图片工具；生成结果必须遵循上述映射。"
+          ? "请先在内部理解每张图被指定的职责，再执行生图；生成结果必须遵循上述映射。"
           : "请根据用户原始请求从零生成。",
       ].join("\n\n"),
     },
@@ -65,6 +59,21 @@ export function buildFreeImageResponsesRequest({
       },
     );
   });
+  return userContent;
+}
+
+export function buildFreeImageResponsesRequest({
+  prompt,
+  images = [],
+  labels = [],
+  size = "1024x1024",
+  model = "gpt-5.5",
+  imageModel = "gpt-image-2",
+}) {
+  const originalPrompt = String(prompt || "").trim();
+  if (!originalPrompt) throw new Error("自由生图缺少用户原始描述");
+
+  const userContent = buildUserContent(originalPrompt, images, labels);
 
   return {
     model,
@@ -92,6 +101,25 @@ export function buildFreeImageResponsesRequest({
   };
 }
 
+export function buildFreeImagePlanningRequest({
+  prompt,
+  images = [],
+  labels = [],
+  model = "gpt-5.5",
+}) {
+  const originalPrompt = String(prompt || "").trim();
+  if (!originalPrompt) throw new Error("自由生图缺少用户原始描述");
+  return {
+    model,
+    reasoning: { effort: "low" },
+    max_output_tokens: 1_500,
+    input: [
+      { role: "system", content: [{ type: "input_text", text: FREE_IMAGE_PLANNER_INSTRUCTIONS }] },
+      { role: "user", content: buildUserContent(originalPrompt, images, labels) },
+    ],
+  };
+}
+
 export function extractFreeImageResponse(payload = {}) {
   const imageCall = Array.isArray(payload.output)
     ? payload.output.find((item) => item?.type === "image_generation_call" && item.result)
@@ -114,4 +142,4 @@ export function extractFreeImageResponse(payload = {}) {
   };
 }
 
-export { FREE_IMAGE_SYSTEM_INSTRUCTIONS };
+export { FREE_IMAGE_PLANNER_INSTRUCTIONS, FREE_IMAGE_SYSTEM_INSTRUCTIONS };

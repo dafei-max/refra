@@ -34,8 +34,10 @@ test("自由模式是默认状态且与技能 UI 隔离", async () => {
 test("自由生成通过 GPT 对话编排调用一次图片工具且不进入 Skill 链", () => {
   assert.match(server, /if \(request\.style_preset === NO_PRESET_ID\) \{\s*return runFreeGenerationPipeline/);
   assert.match(server, /generateChatOrchestratedImage\(\{/);
-  assert.match(server, /OPENAI_BASE_URL = \(process\.env\.OPENAI_BASE_URL \|\| "https:\/\/api\.openai\.com\/v1"\)/);
-  assert.match(server, /`\$\{OPENAI_BASE_URL\}\/responses`/);
+  assert.match(server, /TEXT_API_BASE_URL/);
+  assert.match(server, /AI_PROVIDER === "rightapi"/);
+  assert.match(server, /buildFreeImagePlanningRequest/);
+  assert.match(server, /generateRightApiImage/);
   assert.match(server, /final_prompt: generated\.revised_prompt \|\| prompt/);
   assert.match(server, /automatic_prompt_revision: true/);
   assert.match(server, /models: \{ text: SKILL_TEXT_MODEL, image: IMAGE_MODEL \}/);

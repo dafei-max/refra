@@ -210,6 +210,25 @@ SKILL_REVIEW_REASONING_EFFORT=low
 OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
+### 切换到 RightAPI
+
+RightAPI 的文本 Responses 接口与绘图接口使用不同地址，绘图还是异步任务协议。因此不能只替换 `OPENAI_BASE_URL`。Refra 通过 provider 开关分别路由文本规划、文生图和多参考图生成：
+
+```text
+AI_PROVIDER=rightapi
+RIGHTAPI_API_KEY=在部署平台中保存的密钥
+RIGHTAPI_TEXT_BASE_URL=https://rightapi.ai/codex/v1
+RIGHTAPI_IMAGE_BASE_URL=https://www.rightapi.ai/draw/v1
+RIGHTAPI_TASK_BASE_URL=https://www.rightapi.ai/v1
+OPENAI_TEXT_MODEL=gpt-5.5
+OPENAI_SKILL_MODEL=gpt-5.5
+OPENAI_IMAGE_MODEL=gpt-image-2
+RIGHTAPI_IMAGE_TIMEOUT_MS=240000
+RIGHTAPI_POLL_INTERVAL_MS=1500
+```
+
+在 RightAPI 模式下，服务端先向绘图接口提交 `async: true` 任务，再轮询 `/v1/tasks/:task_id`，完成后立即下载结果并沿用现有 OSS 存储。参考图会按上传顺序作为 data URL 数组提交。RightAPI 不提供 OpenAI Images 的流式 partial image 事件，因此前端生成中仍显示加载卡，最终图在异步任务完成后一次返回。`AI_PROVIDER=openai` 可随时回退原链路。
+
 生成记录会同时保存初稿与最终图 object key、Skill ID/版本、生成 Prompt、评审结果、是否触发优化、优化状态、错误和阶段耗时。优化失败时任务以初稿作为可用最终结果，保留错误并允许用户点击“重新优化”；自动尝试本身不会超过一次。
 
 ## 模块边界

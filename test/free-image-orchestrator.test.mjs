@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  FREE_IMAGE_PLANNER_INSTRUCTIONS,
   FREE_IMAGE_SYSTEM_INSTRUCTIONS,
+  buildFreeImagePlanningRequest,
   buildFreeImageResponsesRequest,
   extractFreeImageResponse,
 } from "../services/free-image-orchestrator.mjs";
@@ -66,4 +68,20 @@ test("提取最终图片和 GPT 自动修订后的真实执行 Prompt", () => {
     imageCallId: "ig_test",
   });
   assert.throws(() => extractFreeImageResponse({ output: [] }), /没有返回图片生成结果/);
+});
+
+test("分离式图片服务使用同一套参考图身份规则生成最终 Prompt", () => {
+  const body = buildFreeImagePlanningRequest({
+    prompt: "保持@图1的人物，参考@图2的构图",
+    labels: ["图1", "图2"],
+    images: [
+      { type: "image/jpeg", bytes: Buffer.from("person") },
+      { type: "image/png", bytes: Buffer.from("layout") },
+    ],
+  });
+  assert.equal(body.model, "gpt-5.5");
+  assert.equal(body.tools, undefined);
+  assert.match(body.input[0].content[0].text, /只输出最终 Prompt/);
+  assert.match(FREE_IMAGE_PLANNER_INSTRUCTIONS, /锁定脸型、五官结构与比例间距/);
+  assert.match(body.input[1].content[0].text, /Image 1 = @图1；Image 2 = @图2/);
 });

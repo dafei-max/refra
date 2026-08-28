@@ -43,9 +43,11 @@ import {
   summarizeTimingSamples,
 } from "./services/skill-optimization.mjs";
 import {
+  buildFreeImagePlanningRequest,
   buildFreeImageResponsesRequest,
   extractFreeImageResponse,
 } from "./services/free-image-orchestrator.mjs";
+import { generateRightApiImage } from "./services/rightapi-image-provider.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,7 +57,18 @@ const DESIGN_PROMPT_URL = new URL("./设计判断.md", import.meta.url);
 const PORT = Number(process.env.PORT || 5173);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-5";
+const AI_PROVIDER = process.env.AI_PROVIDER === "rightapi" ? "rightapi" : "openai";
+const RIGHTAPI_API_KEY = process.env.RIGHTAPI_API_KEY || "";
+const AI_API_KEY = AI_PROVIDER === "rightapi" ? RIGHTAPI_API_KEY : OPENAI_API_KEY;
+const AI_API_KEY_NAME = AI_PROVIDER === "rightapi" ? "RIGHTAPI_API_KEY" : "OPENAI_API_KEY";
+const TEXT_API_BASE_URL = (AI_PROVIDER === "rightapi"
+  ? process.env.RIGHTAPI_TEXT_BASE_URL || "https://rightapi.ai/codex/v1"
+  : OPENAI_BASE_URL).replace(/\/$/, "");
+const RIGHTAPI_IMAGE_BASE_URL = (process.env.RIGHTAPI_IMAGE_BASE_URL || "https://www.rightapi.ai/draw/v1").replace(/\/$/, "");
+const RIGHTAPI_TASK_BASE_URL = (process.env.RIGHTAPI_TASK_BASE_URL || "https://www.rightapi.ai/v1").replace(/\/$/, "");
+const RIGHTAPI_IMAGE_TIMEOUT_MS = Math.min(270_000, Math.max(30_000, Number(process.env.RIGHTAPI_IMAGE_TIMEOUT_MS || 240_000)));
+const RIGHTAPI_POLL_INTERVAL_MS = Math.min(10_000, Math.max(500, Number(process.env.RIGHTAPI_POLL_INTERVAL_MS || 1_500)));
+const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || (AI_PROVIDER === "rightapi" ? "gpt-5.5" : "gpt-5");
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 const SKILL_TEXT_MODEL = process.env.OPENAI_SKILL_MODEL || "gpt-5.5";
 const SKILL_REVISION_THRESHOLD = Math.min(1, Math.max(0, Number(process.env.SKILL_REVISION_THRESHOLD || 0.65)));
@@ -1502,7 +1515,7 @@ async function planSkillGeneration({ request, brief, skill, references, baseProm
   const styleReference = designLanguageReference(references);
   const fingerprint = await styleFingerprintFor(skill, styleReference);
   const fallback = localSkillPlan(request, skill, fingerprint, basePrompt);
-  if (!OPENAI_API_KEY) return { plan: fallback, fingerprint, styleReference };
+  if (!AI_API_KEY) return { plan: fallback, fingerprint, styleReference };
   const plan = await callStructuredResponses({
     name: "skill_generation_plan",
     schema: SKILL_PLAN_SCHEMA,
@@ -3738,8 +3751,8 @@ function localImageInput(image = {}) {
 }
 
 async function callResponses({ system, user, expectJson, images = [], maxOutputTokens = TEXT_MAX_OUTPUT_TOKENS, allowJsonRetry = !FAST_PIPELINE }) {
-  if (!OPENAI_API_KEY) {
-    throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
+  if (!AI_API_KEY) {
+    throw new Error(`缺少 ${AI_API_KEY_NAME}，无法调用模型 API`);
   }
 
   const userText = expectJson ? `${user}\n\n请只返回合法 JSON object，首字符必须是 {，末字符必须是 }。` : user;
@@ -3759,10 +3772,10 @@ async function callResponses({ system, user, expectJson, images = [], maxOutputT
   };
   if (OPENAI_REASONING_EFFORT) body.reasoning = { effort: OPENAI_REASONING_EFFORT };
 
-  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+  const response = await fetch(`${TEXT_API_BASE_URL}/responses`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${AI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -3798,10 +3811,10 @@ async function callResponses({ system, user, expectJson, images = [], maxOutputT
         },
       ],
     };
-    const retryResponse = await fetch(`${OPENAI_BASE_URL}/responses`, {
+    const retryResponse = await fetch(`${TEXT_API_BASE_URL}/responses`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${AI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(retryBody),
@@ -3828,7 +3841,7 @@ async function callStructuredResponses({
   reasoningEffort = "low",
   maxOutputTokens = 2600,
 }) {
-  if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
+  if (!AI_API_KEY) throw new Error(`缺少 ${AI_API_KEY_NAME}，无法调用模型 API`);
   const resolved = references.length ? await fetchImageBytes(references.slice(0, 6)) : [];
   const imageContent = resolved.flatMap((image) => [
     { type: "input_text", text: `【${image.item?.label || image.item?.number || image.filename}】` },
@@ -3855,10 +3868,10 @@ async function callStructuredResponses({
       },
     },
   };
-  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+  const response = await fetch(`${TEXT_API_BASE_URL}/responses`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${AI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -3869,7 +3882,7 @@ async function callStructuredResponses({
 }
 
 async function callVisionResponses({ system, user, imagePath, expectJson = true }) {
-  if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
+  if (!AI_API_KEY) throw new Error(`缺少 ${AI_API_KEY_NAME}，无法调用模型 API`);
   if (!imagePath || !existsSync(imagePath)) throw new Error("缺少可评审的生成图片");
   const extension = path.extname(imagePath).toLowerCase();
   const mime = MIME[extension] || "image/png";
@@ -3892,10 +3905,10 @@ async function callVisionResponses({ system, user, imagePath, expectJson = true 
     ],
   };
   if (OPENAI_REASONING_EFFORT) body.reasoning = { effort: OPENAI_REASONING_EFFORT };
-  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+  const response = await fetch(`${TEXT_API_BASE_URL}/responses`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${AI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -4182,7 +4195,7 @@ async function chooseProductionPresetVariant(preset, request, creativePlan) {
   const fallbackSelections = localReferenceSelections(candidateGroups);
   let selections = fallbackSelections;
   let selectionMethod = hasManualIntegratedLayout ? "manual-integrated-layout+semantic-contextual" : "semantic-contextual";
-  if (OPENAI_API_KEY && ENABLE_REFERENCE_LLM_RERANK && candidateGroups.length) {
+  if (AI_API_KEY && ENABLE_REFERENCE_LLM_RERANK && candidateGroups.length) {
     try {
       const candidatePayload = candidateGroups.map(({ group, candidates }) => ({
         role: group.role,
@@ -4390,7 +4403,7 @@ function localPreflightReview(request, creativePlan, design, references) {
 
 async function reviewDesignPreflight(request, brief, creativePlan, design, references, knowledge) {
   const fallback = localPreflightReview(request, creativePlan, design, references);
-  if (!OPENAI_API_KEY || !ENABLE_PREFLIGHT_LLM) {
+  if (!AI_API_KEY || !ENABLE_PREFLIGHT_LLM) {
     return {
       ...fallback,
       source: ENABLE_PREFLIGHT_LLM ? fallback.source : "local-art-director-fast-path",
@@ -5721,7 +5734,7 @@ async function classifyUploadedReferencesWithAi(request) {
       : localRole;
     return { index: index + 1, label: request.reference_labels?.[index] || `图${index + 1}`, role, reason: "本地语义规则" };
   });
-  if (!OPENAI_API_KEY) return fallback;
+  if (!AI_API_KEY) return fallback;
   const images = uploaded.flatMap((image, index) => {
     const local = materialImagePath(textOf(image).trim());
     if (!local?.file || !existsSync(local.file)) return [];
@@ -6474,8 +6487,22 @@ async function readImageStream(response, onPartial = null) {
 }
 
 async function generateImageFile({ prompt, size, prefix = "kv-free", quality = "medium", partialImages = 0, onPartial = null }) {
-  if (!OPENAI_API_KEY) {
-    return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
+  if (!AI_API_KEY) {
+    return { skipped: true, reason: `缺少 ${AI_API_KEY_NAME}，无法调用图片 API。` };
+  }
+  if (AI_PROVIDER === "rightapi") {
+    const generated = await generateRightApiImage({
+      apiKey: AI_API_KEY,
+      model: IMAGE_MODEL,
+      prompt,
+      size: size || "1024x1024",
+      imageBaseUrl: RIGHTAPI_IMAGE_BASE_URL,
+      taskBaseUrl: RIGHTAPI_TASK_BASE_URL,
+      timeoutMs: RIGHTAPI_IMAGE_TIMEOUT_MS,
+      pollIntervalMs: RIGHTAPI_POLL_INTERVAL_MS,
+    });
+    if (onPartial) await onPartial(generated.b64, 0);
+    return saveGeneratedImageFile({ b64: generated.b64, prompt, size, prefix });
   }
   const requestBody = {
     model: IMAGE_MODEL,
@@ -6488,7 +6515,7 @@ async function generateImageFile({ prompt, size, prefix = "kv-free", quality = "
   const response = await fetch(`${OPENAI_BASE_URL}/images/generations`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${AI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),
@@ -6518,14 +6545,38 @@ async function generateImageEditFile({
   partialImages = 0,
   onPartial = null,
 }) {
-  if (!OPENAI_API_KEY) {
-    return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
+  if (!AI_API_KEY) {
+    return { skipped: true, reason: `缺少 ${AI_API_KEY_NAME}，无法调用图片 API。` };
   }
   if (!selected.length) {
     return { skipped: true, reason: "缺少参考图，无法进行图生图。" };
   }
 
   const images = await fetchImageBytes(selected);
+  if (AI_PROVIDER === "rightapi") {
+    const generated = await generateRightApiImage({
+      apiKey: AI_API_KEY,
+      model: IMAGE_MODEL,
+      prompt,
+      size: size || "1024x1024",
+      images,
+      imageBaseUrl: RIGHTAPI_IMAGE_BASE_URL,
+      taskBaseUrl: RIGHTAPI_TASK_BASE_URL,
+      timeoutMs: RIGHTAPI_IMAGE_TIMEOUT_MS,
+      pollIntervalMs: RIGHTAPI_POLL_INTERVAL_MS,
+    });
+    if (onPartial) await onPartial(generated.b64, 0);
+    return saveGeneratedImageFile({
+      b64: generated.b64,
+      prompt,
+      size,
+      prefix,
+      referenceImages: selected.map((item) => item.number),
+      applyOverlay,
+      overlayRequest,
+      keepTemp,
+    });
+  }
   const buildForm = (withStreaming) => {
     const form = new FormData();
     form.append("model", IMAGE_MODEL);
@@ -6546,7 +6597,7 @@ async function generateImageEditFile({
   let form = buildForm(partialImages > 0);
   let response = await fetch(`${OPENAI_BASE_URL}/images/edits`, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
+    headers: { "Authorization": `Bearer ${AI_API_KEY}` },
     body: form,
   });
   let b64 = "";
@@ -6559,7 +6610,7 @@ async function generateImageEditFile({
       form = buildForm(false);
       response = await fetch(`${OPENAI_BASE_URL}/images/edits`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${OPENAI_API_KEY}` },
+        headers: { "Authorization": `Bearer ${AI_API_KEY}` },
         body: form,
       });
       payload = await response.json().catch(() => ({}));
@@ -6581,10 +6632,55 @@ async function generateImageEditFile({
 }
 
 async function generateChatOrchestratedImage({ prompt, selected = [], size, prefix = "kv-free-chat" }) {
-  if (!OPENAI_API_KEY) {
-    return { skipped: true, reason: "缺少 OPENAI_API_KEY，无法调用 OpenAI API。" };
+  if (!AI_API_KEY) {
+    return { skipped: true, reason: `缺少 ${AI_API_KEY_NAME}，无法调用图片 API。` };
   }
   const images = selected.length ? await fetchImageBytes(selected) : [];
+  if (AI_PROVIDER === "rightapi") {
+    const planningBody = buildFreeImagePlanningRequest({
+      prompt,
+      images,
+      labels: selected.map((item, index) => item.label || `图${index + 1}`),
+      model: SKILL_TEXT_MODEL,
+    });
+    const planningResponse = await fetch(`${TEXT_API_BASE_URL}/responses`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${AI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(planningBody),
+    });
+    const planningPayload = await planningResponse.json().catch(() => ({}));
+    if (!planningResponse.ok) {
+      throw new Error(planningPayload.error?.message || `RightAPI 文本规划请求失败：${planningResponse.status}`);
+    }
+    const revisedPrompt = parseResponseText(planningPayload) || prompt;
+    const generated = await generateRightApiImage({
+      apiKey: AI_API_KEY,
+      model: IMAGE_MODEL,
+      prompt: revisedPrompt,
+      size: size || "1024x1024",
+      images,
+      imageBaseUrl: RIGHTAPI_IMAGE_BASE_URL,
+      taskBaseUrl: RIGHTAPI_TASK_BASE_URL,
+      timeoutMs: RIGHTAPI_IMAGE_TIMEOUT_MS,
+      pollIntervalMs: RIGHTAPI_POLL_INTERVAL_MS,
+    });
+    const saved = await saveGeneratedImageFile({
+      b64: generated.b64,
+      prompt: revisedPrompt,
+      size: size || "1024x1024",
+      prefix,
+      referenceImages: selected.map((item) => item.number),
+    });
+    return {
+      ...saved,
+      revised_prompt: revisedPrompt,
+      response_id: textOf(planningPayload.id),
+      image_call_id: generated.taskId,
+    };
+  }
   const requestBody = buildFreeImageResponsesRequest({
     prompt,
     images,
@@ -6593,10 +6689,10 @@ async function generateChatOrchestratedImage({ prompt, selected = [], size, pref
     model: SKILL_TEXT_MODEL,
     imageModel: IMAGE_MODEL,
   });
-  const response = await fetch(`${OPENAI_BASE_URL}/responses`, {
+  const response = await fetch(`${TEXT_API_BASE_URL}/responses`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+      "Authorization": `Bearer ${AI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),
@@ -6958,8 +7054,8 @@ async function generateLayeredImage(request, design, selected, onStage = () => {
 }
 
 async function generateImage(request, prompt, selected, options = {}) {
-  if (!OPENAI_API_KEY) {
-    return { skipped: true, reason: "缺少 OPENAI_API_KEY，已跳过最终生图。" };
+  if (!AI_API_KEY) {
+    return { skipped: true, reason: `缺少 ${AI_API_KEY_NAME}，已跳过最终生图。` };
   }
   if (!selected.length) {
     return { skipped: true, reason: "当前未使用预设且未上传参考图，已跳过图生图；请选择一个风格预设或上传参考图后再生成 KV 图。" };
@@ -7078,7 +7174,7 @@ async function splitAssetLayers({ name, title, subtitle, time }) {
         : null,
     };
   }
-  if (!OPENAI_API_KEY) throw new Error("缺少 OPENAI_API_KEY，无法调用 OpenAI API");
+  if (!AI_API_KEY) throw new Error(`缺少 ${AI_API_KEY_NAME}，无法调用图片 API`);
 
   let sourcePath = source.filePath || "";
   const tempFiles = [];
@@ -7749,7 +7845,8 @@ const server = createServer(async (req, res) => {
       const materials = await loadMaterials();
       jsonResponse(res, 200, {
         ok: true,
-        has_api_key: Boolean(OPENAI_API_KEY),
+        has_api_key: Boolean(AI_API_KEY),
+        api_provider: AI_PROVIDER,
         models: { text: TEXT_MODEL, skill: SKILL_TEXT_MODEL, image: IMAGE_MODEL },
         capabilities: {
           brand_overlay_engine: "pngjs+resvg-wasm",

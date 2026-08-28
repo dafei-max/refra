@@ -38,7 +38,7 @@ test("persisted message images use object keys and are signed only for reads", (
 
 test("split requests reuse stored layers before invoking image generation", () => {
   const reuseIndex = server.indexOf("savedSplit?.title_layer?.object_key");
-  const generationIndex = server.indexOf("if (!OPENAI_API_KEY)", reuseIndex);
+  const generationIndex = server.indexOf("if (!AI_API_KEY)", reuseIndex);
   assert.ok(reuseIndex >= 0);
   assert.ok(generationIndex > reuseIndex);
   assert.match(server.slice(reuseIndex, generationIndex), /reused: true/);
